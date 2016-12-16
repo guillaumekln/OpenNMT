@@ -15,7 +15,9 @@ cmd:text("")
 
 cmd:option('-model', '', [[Path to model .t7 file]])
 cmd:option('-src', '', [[Source sequence to decode (one line per sequence)]])
+cmd:option('-src_domains', '', [[Source side domains]])
 cmd:option('-tgt', '', [[True target sequence (optional)]])
+cmd:option('-tgt_domains', '', [[Target side domains]])
 cmd:option('-output', 'pred.txt', [[Path to output the predictions (each line will be the decoded sequence]])
 
 -- beam search options
@@ -63,10 +65,24 @@ local function main()
   local srcWordsBatch = {}
   local srcFeaturesBatch = {}
 
+  local srcDomainReader
+  local srcDomainsBatch = {}
+
+  if opt.src_domains:len() > 0 then
+    srcDomainReader = onmt.utils.FileReader.new(opt.src_domains)
+  end
+
   local tgtReader
   local tgtBatch
   local tgtWordsBatch
   local tgtFeaturesBatch
+
+  local tgtDomainReader
+  local tgtDomainsBatch = {}
+
+  if opt.tgt_domains:len() > 0 then
+    tgtDomainReader = onmt.utils.FileReader.new(opt.tgt_domains)
+  end
 
   local withGoldScore = opt.tgt:len() > 0
 
@@ -103,12 +119,25 @@ local function main()
       tgtTokens = tgtReader:next()
     end
 
+    local srcDomain
+    local tgtDomain
+
+    if srcDomainReader then
+      srcDomain = srcDomainReader:next()
+    end
+    if tgtDomainReader then
+      tgtDomain = tgtDomainReader:next()
+    end
+
     if srcTokens ~= nil then
       local srcWords, srcFeats = onmt.utils.Features.extract(srcTokens)
       table.insert(srcBatch, srcTokens)
       table.insert(srcWordsBatch, srcWords)
       if #srcFeats > 0 then
         table.insert(srcFeaturesBatch, srcFeats)
+      end
+      if srcDomain then
+        table.insert(srcDomainsBatch, srcDomain[1])
       end
 
       if withGoldScore then
@@ -119,6 +148,10 @@ local function main()
           table.insert(tgtFeaturesBatch, tgtFeats)
         end
       end
+
+      if tgtDomain then
+        table.insert(tgtDomainsBatch, tgtDomain[1])
+      end
     elseif #srcBatch == 0 then
       break
     end
@@ -128,8 +161,12 @@ local function main()
         timer:resume()
       end
 
-      local predBatch, info = onmt.translate.Translator.translate(srcWordsBatch, srcFeaturesBatch,
-                                                                  tgtWordsBatch, tgtFeaturesBatch)
+      local predBatch, info = onmt.translate.Translator.translate(srcWordsBatch,
+                                                                  srcFeaturesBatch,
+                                                                  srcDomainsBatch,
+                                                                  tgtWordsBatch,
+                                                                  tgtFeaturesBatch,
+                                                                  tgtDomainsBatch)
 
       if opt.time then
         timer:stop()

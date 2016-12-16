@@ -28,17 +28,19 @@ local function init(args)
   end
 end
 
-local function buildData(srcBatch, srcFeaturesBatch, goldBatch, goldFeaturesBatch)
+local function buildData(srcBatch, srcFeaturesBatch, srcDomainsBatch,
+                         goldBatch, goldFeaturesBatch, tgtDomainsBatch)
   local srcData = {}
   srcData.words = {}
   srcData.features = {}
+  srcData.domains = {}
 
-  local tgtData
+  local tgtData = {}
   if goldBatch ~= nil then
-    tgtData = {}
     tgtData.words = {}
     tgtData.features = {}
   end
+  tgtData.domains = {}
 
   for b = 1, #srcBatch do
     table.insert(srcData.words, dicts.src.words:convertToIdx(srcBatch[b], onmt.Constants.UNK_WORD))
@@ -48,7 +50,11 @@ local function buildData(srcBatch, srcFeaturesBatch, goldBatch, goldFeaturesBatc
                    onmt.utils.Features.generateSource(dicts.src.features, srcFeaturesBatch[b]))
     end
 
-    if tgtData ~= nil then
+    if dicts.src.domains then
+      table.insert(srcData.domains, dicts.src.domains:lookup(srcDomainsBatch[b]))
+    end
+
+    if goldBatch ~= nil then
       table.insert(tgtData.words,
                    dicts.tgt.words:convertToIdx(goldBatch[b],
                                                   onmt.Constants.UNK_WORD,
@@ -59,6 +65,10 @@ local function buildData(srcBatch, srcFeaturesBatch, goldBatch, goldFeaturesBatc
         table.insert(tgtData.features,
                      onmt.utils.Features.generateTarget(dicts.tgt.features, goldFeaturesBatch[b]))
       end
+    end
+
+    if dicts.tgt.domains then
+      table.insert(tgtData.domains, dicts.tgt.domains:lookup(tgtDomainsBatch[b]))
     end
   end
 
@@ -147,6 +157,7 @@ local function translateBatch(batch)
     -- Prepare decoder input.
     local input = torch.IntTensor(opt.beam_size, remainingSents)
     local inputFeatures = {}
+    local inputDomain
     local sourceSizes = torch.IntTensor(remainingSents)
 
     for b = 1, batch.size do
@@ -164,6 +175,15 @@ local function translateBatch(batch)
           end
           inputFeatures[j][{{}, idx}]:copy(featuresState[j])
         end
+
+        if dicts.tgt.domains then
+          if inputDomain == nil then
+            inputDomain = torch.IntTensor(opt.beam_size, remainingSents)
+          end
+          for k = 1, opt.beam_size do
+            inputDomain[k][idx] = batch.targetDomainInput[b]
+          end
+        end
       end
     end
 
@@ -171,14 +191,22 @@ local function translateBatch(batch)
     for j = 1, #dicts.tgt.features do
       inputFeatures[j] = inputFeatures[j]:view(opt.beam_size * remainingSents)
     end
+    if inputDomain then
+      inputDomain = inputDomain:view(opt.beam_size * remainingSents)
+    end
 
-    local inputs
-    if #inputFeatures == 0 then
-      inputs = input
-    else
-      inputs = {}
-      table.insert(inputs, input)
+    local inputs = input
+
+    if #inputFeatures > 0 then
+      inputs = { inputs }
       onmt.utils.Table.append(inputs, inputFeatures)
+    end
+
+    if inputDomain then
+      if type(inputs) ~= 'table' then
+        inputs = { inputs }
+      end
+      table.insert(inputs, inputDomain)
     end
 
     if batch.size > 1 then
@@ -299,8 +327,10 @@ local function translateBatch(batch)
   return allHyp, allFeats, allScores, allAttn, goldScore
 end
 
-local function translate(srcBatch, srcFeaturesBatch, goldBatch, goldFeaturesBatch)
-  local data = buildData(srcBatch, srcFeaturesBatch, goldBatch, goldFeaturesBatch)
+local function translate(srcBatch, srcFeaturesBatch, srcDomainsBatch,
+                         goldBatch, goldFeaturesBatch, tgtDomainsBatch)
+  local data = buildData(srcBatch, srcFeaturesBatch, srcDomainsBatch,
+                         goldBatch, goldFeaturesBatch, tgtDomainsBatch)
   local batch = data:getBatch()
 
   local pred, predFeats, predScore, attn, goldScore = translateBatch(batch)

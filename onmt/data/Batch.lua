@@ -87,10 +87,10 @@ function Batch:__init(src, srcFeatures, srcDomains, tgt, tgtFeatures, tgtDomains
         table.insert(self.targetOutputFeatures, targetSeq:clone())
       end
     end
+  end
 
-    if #tgtDomains > 0 then
-      self.targetDomainInput = torch.IntTensor(self.size):fill(onmt.Constants.PAD)
-    end
+  if #tgtDomains > 0 then
+    self.targetDomainInput = torch.IntTensor(self.size):fill(onmt.Constants.PAD)
   end
 
   for b = 1, self.size do
@@ -136,10 +136,10 @@ function Batch:__init(src, srcFeatures, srcDomains, tgt, tgtFeatures, tgtDomains
         self.targetInputFeatures[i][{{1, targetLength}, b}]:copy(targetInputFeatures)
         self.targetOutputFeatures[i][{{1, targetLength}, b}]:copy(targetOutputFeatures)
       end
+    end
 
-      if #tgtDomains > 0 then
-        self.targetDomainInput[b] = tgtDomains[b]
-      end
+    if #tgtDomains > 0 then
+      self.targetDomainInput[b] = tgtDomains[b]
     end
   end
 end

@@ -13,8 +13,9 @@ function Dataset:__init(srcData, tgtData)
   if tgtData ~= nil then
     self.tgt = tgtData.words
     self.tgtFeatures = tgtData.features
-    self.tgtDomains = tgtData.domains or {}
   end
+
+  self.tgtDomains = tgtData.domains or {}
 end
 
 --[[ Setup up the training data to respect `maxBatchSize`. ]]
