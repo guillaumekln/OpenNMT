@@ -17,6 +17,11 @@ cmd:option('-train_tgt', '', [[Path to the training target data]])
 cmd:option('-valid_src', '', [[Path to the validation source data]])
 cmd:option('-valid_tgt', '', [[Path to the validation target data]])
 
+cmd:option('-train_src_domains', '', [[Path to the training source domains]])
+cmd:option('-train_tgt_domains', '', [[Path to the training target domains]])
+cmd:option('-valid_src_domains', '', [[Path to the validation source domains]])
+cmd:option('-valid_tgt_domains', '', [[Path to the validation target domains]])
+
 cmd:option('-save_data', '', [[Output file for the prepared data]])
 
 cmd:option('-src_vocab_size', 50000, [[Size of the source vocabulary]])
@@ -40,6 +45,24 @@ local function hasFeatures(filename)
   return numFeatures > 0
 end
 
+local function makeDomainVocabulary(filename)
+  local vocab = onmt.utils.Dict.new({onmt.Constants.PAD})
+
+  local reader = onmt.utils.FileReader.new(filename)
+
+  while true do
+    local label = reader:next()
+    if label == nil then
+      break
+    end
+    vocab:add(label[1])
+  end
+
+  reader:close()
+
+  return vocab
+end
+
 local function makeVocabulary(filename, size)
   local wordVocab = onmt.utils.Dict.new({onmt.Constants.PAD_WORD, onmt.Constants.UNK_WORD,
                                          onmt.Constants.BOS_WORD, onmt.Constants.EOS_WORD})
@@ -53,26 +76,27 @@ local function makeVocabulary(filename, size)
       break
     end
 
-    local words, features, numFeatures = onmt.utils.Features.extract(sent)
+    local _, err = pcall(function ()
+      local words, features, numFeatures = onmt.utils.Features.extract(sent)
 
-    if #featuresVocabs == 0 and numFeatures > 0 then
-      for j = 1, numFeatures do
-        featuresVocabs[j] = onmt.utils.Dict.new({onmt.Constants.PAD_WORD, onmt.Constants.UNK_WORD,
-                                                 onmt.Constants.BOS_WORD, onmt.Constants.EOS_WORD})
+      if #featuresVocabs == 0 and numFeatures > 0 then
+        for j = 1, numFeatures do
+          featuresVocabs[j] = onmt.utils.Dict.new({onmt.Constants.PAD_WORD, onmt.Constants.UNK_WORD,
+                                                   onmt.Constants.BOS_WORD, onmt.Constants.EOS_WORD})
+        end
+      else
+        assert(#featuresVocabs == numFeatures,
+               'all sentences must have the same numbers of additional features')
       end
-    else
-      assert(#featuresVocabs == numFeatures,
-             'all sentences must have the same numbers of additional features')
-    end
 
-    for i = 1, #words do
-      wordVocab:add(words[i])
+      for i = 1, #words do
+        wordVocab:add(words[i])
 
-      for j = 1, numFeatures do
-        featuresVocabs[j]:add(features[j][i])
+        for j = 1, numFeatures do
+          featuresVocabs[j]:add(features[j][i])
+        end
       end
-    end
-
+    end)
   end
 
   reader:close()
@@ -150,12 +174,14 @@ local function saveFeaturesVocabularies(name, vocabs, prefix)
   end
 end
 
-local function makeData(srcFile, tgtFile, srcDicts, tgtDicts)
+local function makeData(srcFile, srcDomainsFile, srcDicts, tgtFile, tgtDomainsFile, tgtDicts)
   local src = {}
   local srcFeatures = {}
+  local srcDomains = {}
 
   local tgt = {}
   local tgtFeatures = {}
+  local tgtDomains = {}
 
   local sizes = {}
 
@@ -165,9 +191,29 @@ local function makeData(srcFile, tgtFile, srcDicts, tgtDicts)
   local srcReader = onmt.utils.FileReader.new(srcFile)
   local tgtReader = onmt.utils.FileReader.new(tgtFile)
 
+  local srcDomainsReader
+  local tgtDomainsReader
+
+  if srcDicts.domains then
+    srcDomainsReader = onmt.utils.FileReader.new(srcDomainsFile)
+  end
+  if tgtDicts.domains then
+    tgtDomainsReader = onmt.utils.FileReader.new(tgtDomainsFile)
+  end
+
   while true do
     local srcTokens = srcReader:next()
     local tgtTokens = tgtReader:next()
+
+    local srcDomain
+    local tgtDomain
+
+    if srcDomainsReader then
+      srcDomain = srcDomainsReader:next()
+    end
+    if tgtDomainsReader then
+      tgtDomain = tgtDomainsReader:next()
+    end
 
     if srcTokens == nil or tgtTokens == nil then
       if srcTokens == nil and tgtTokens ~= nil or srcTokens ~= nil and tgtTokens == nil then
@@ -178,21 +224,34 @@ local function makeData(srcFile, tgtFile, srcDicts, tgtDicts)
 
     if #srcTokens > 0 and #srcTokens <= opt.seq_length
     and #tgtTokens > 0 and #tgtTokens <= opt.seq_length then
-      local srcWords, srcFeats = onmt.utils.Features.extract(srcTokens)
-      local tgtWords, tgtFeats = onmt.utils.Features.extract(tgtTokens)
+      local _, err = pcall(function ()
+        local srcWords, srcFeats = onmt.utils.Features.extract(srcTokens)
+        local tgtWords, tgtFeats = onmt.utils.Features.extract(tgtTokens)
 
-      table.insert(src, srcDicts.words:convertToIdx(srcWords, onmt.Constants.UNK_WORD))
-      table.insert(tgt, tgtDicts.words:convertToIdx(tgtWords, onmt.Constants.UNK_WORD,
-                                                    onmt.Constants.BOS_WORD, onmt.Constants.EOS_WORD))
+        table.insert(src, srcDicts.words:convertToIdx(srcWords, onmt.Constants.UNK_WORD))
+        table.insert(tgt, tgtDicts.words:convertToIdx(tgtWords, onmt.Constants.UNK_WORD,
+                                                      onmt.Constants.BOS_WORD, onmt.Constants.EOS_WORD))
 
-      if #srcDicts.features > 0 then
-        table.insert(srcFeatures, onmt.utils.Features.generateSource(srcDicts.features, srcFeats))
+        if #srcDicts.features > 0 then
+          table.insert(srcFeatures, onmt.utils.Features.generateSource(srcDicts.features, srcFeats))
+        end
+        if #tgtDicts.features > 0 then
+          table.insert(tgtFeatures, onmt.utils.Features.generateTarget(tgtDicts.features, tgtFeats))
+        end
+
+        table.insert(sizes, #srcWords)
+
+        if srcDomain then
+          table.insert(srcDomains, srcDicts.domains:lookup(srcDomain[1]))
+        end
+        if tgtDomain then
+          table.insert(tgtDomains, tgtDicts.domains:lookup(tgtDomain[1]))
+        end
+      end)
+
+      if err then
+        ignored = ignored + 1
       end
-      if #tgtDicts.features > 0 then
-        table.insert(tgtFeatures, onmt.utils.Features.generateTarget(tgtDicts.features, tgtFeats))
-      end
-
-      table.insert(sizes, #srcWords)
     else
       ignored = ignored + 1
     end
@@ -207,9 +266,14 @@ local function makeData(srcFile, tgtFile, srcDicts, tgtDicts)
   srcReader:close()
   tgtReader:close()
 
-  if opt.shuffle == 1 then
-    print('... shuffling sentences')
-    local perm = torch.randperm(#src)
+  if srcDomainsReader then
+    srcDomainsReader:close()
+  end
+  if tgtDomainsReader then
+    tgtDomainsReader:close()
+  end
+
+  local function reorderData(perm)
     src = onmt.utils.Table.reorder(src, perm)
     tgt = onmt.utils.Table.reorder(tgt, perm)
     sizes = onmt.utils.Table.reorder(sizes, perm)
@@ -220,30 +284,37 @@ local function makeData(srcFile, tgtFile, srcDicts, tgtDicts)
     if #tgtDicts.features > 0 then
       tgtFeatures = onmt.utils.Table.reorder(tgtFeatures, perm)
     end
+
+    if srcDicts.domains then
+      srcDomains = onmt.utils.Table.reorder(srcDomains, perm)
+    end
+    if tgtDicts.domains then
+      tgtDomains = onmt.utils.Table.reorder(tgtDomains, perm)
+    end
+  end
+
+  if opt.shuffle == 1 then
+    print('... shuffling sentences')
+    local perm = torch.randperm(#src):long()
+    reorderData(perm)
   end
 
   print('... sorting sentences by size')
   local _, perm = torch.sort(torch.Tensor(sizes))
-  src = onmt.utils.Table.reorder(src, perm)
-  tgt = onmt.utils.Table.reorder(tgt, perm)
-
-  if #srcDicts.features > 0 then
-    srcFeatures = onmt.utils.Table.reorder(srcFeatures, perm)
-  end
-  if #tgtDicts.features > 0 then
-    tgtFeatures = onmt.utils.Table.reorder(tgtFeatures, perm)
-  end
+  reorderData(perm)
 
   print('Prepared ' .. #src .. ' sentences (' .. ignored .. ' ignored due to length == 0 or > ' .. opt.seq_length .. ')')
 
   local srcData = {
     words = src,
-    features = srcFeatures
+    features = srcFeatures,
+    domains = srcDomains
   }
 
   local tgtData = {
     words = tgt,
-    features = tgtFeatures
+    features = tgtFeatures,
+    domains = tgtDomains
   }
 
   return srcData, tgtData
@@ -268,16 +339,31 @@ local function main()
   data.dicts.tgt = initVocabulary('target', opt.train_tgt, opt.tgt_vocab,
                                   opt.tgt_vocab_size, opt.features_vocabs_prefix)
 
+  if opt.train_src_domains:len() > 0 then
+    data.dicts.src.domains = makeDomainVocabulary(opt.train_src_domains)
+  end
+  if opt.train_tgt_domains:len() > 0 then
+    data.dicts.tgt.domains = makeDomainVocabulary(opt.train_tgt_domains)
+  end
+
   print('Preparing training data...')
   data.train = {}
-  data.train.src, data.train.tgt = makeData(opt.train_src, opt.train_tgt,
-                                            data.dicts.src, data.dicts.tgt)
+  data.train.src, data.train.tgt = makeData(opt.train_src,
+                                            opt.train_src_domains,
+                                            data.dicts.src,
+                                            opt.train_tgt,
+                                            opt.train_tgt_domains,
+                                            data.dicts.tgt)
   print('')
 
   print('Preparing validation data...')
   data.valid = {}
-  data.valid.src, data.valid.tgt = makeData(opt.valid_src, opt.valid_tgt,
-                                            data.dicts.src, data.dicts.tgt)
+  data.valid.src, data.valid.tgt = makeData(opt.valid_src,
+                                            opt.valid_src_domains,
+                                            data.dicts.src,
+                                            opt.valid_tgt,
+                                            opt.valid_tgt_domains,
+                                            data.dicts.tgt)
   print('')
 
   if opt.src_vocab:len() == 0 then

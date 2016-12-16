@@ -1,8 +1,10 @@
 local function buildEncoder(opt, dicts)
-  local inputNetwork = onmt.WordEmbedding.new(dicts.words:size(), -- vocab size
-                                              opt.word_vec_size,
-                                              opt.pre_word_vecs_enc,
-                                              opt.fix_word_vecs_enc)
+  local inputs = nn.ParallelTable()
+
+  inputs:add(onmt.WordEmbedding.new(dicts.words:size(), -- vocab size
+                                    opt.word_vec_size,
+                                    opt.pre_word_vecs_enc,
+                                    opt.fix_word_vecs_enc))
 
   local inputSize = opt.word_vec_size
 
@@ -12,15 +14,18 @@ local function buildEncoder(opt, dicts)
                                                         opt.feat_vec_exponent,
                                                         opt.feat_vec_size,
                                                         opt.feat_merge)
-
-    inputNetwork = nn.Sequential()
-      :add(nn.ParallelTable()
-             :add(inputNetwork)
-             :add(srcFeatEmbedding))
-      :add(nn.JoinTable(2))
-
+    inputs:add(srcFeatEmbedding)
     inputSize = inputSize + srcFeatEmbedding.outputSize
   end
+
+  if dicts.domains then
+    inputs:add(nn.LookupTable(dicts.domains:size(), opt.domain_vec_size))
+    inputSize = inputSize + opt.domain_vec_size
+  end
+
+  local inputNetwork = nn.Sequential()
+    :add(inputs)
+    :add(nn.JoinTable(2))
 
   if opt.brnn then
     -- Compute rnn hidden size depending on hidden states merge action.
@@ -47,13 +52,14 @@ local function buildEncoder(opt, dicts)
 end
 
 local function buildDecoder(opt, dicts, verbose)
-  local inputNetwork = onmt.WordEmbedding.new(dicts.words:size(), -- vocab size
-                                              opt.word_vec_size,
-                                              opt.pre_word_vecs_dec,
-                                              opt.fix_word_vecs_dec)
+  local inputs = nn.ParallelTable()
+
+  inputs:add(onmt.WordEmbedding.new(dicts.words:size(), -- vocab size
+                                    opt.word_vec_size,
+                                    opt.pre_word_vecs_enc,
+                                    opt.fix_word_vecs_enc))
 
   local inputSize = opt.word_vec_size
-
   local generator
 
   -- Sequences with features.
@@ -62,19 +68,21 @@ local function buildDecoder(opt, dicts, verbose)
                                                         opt.feat_vec_exponent,
                                                         opt.feat_vec_size,
                                                         opt.feat_merge)
-
-    inputNetwork = nn.Sequential()
-      :add(nn.ParallelTable()
-             :add(inputNetwork)
-             :add(tgtFeatEmbedding))
-      :add(nn.JoinTable(2))
-
+    inputs:add(tgtFeatEmbedding)
     inputSize = inputSize + tgtFeatEmbedding.outputSize
-
     generator = onmt.FeaturesGenerator.new(opt.rnn_size, dicts.words:size(), dicts.features)
   else
     generator = onmt.Generator.new(opt.rnn_size, dicts.words:size())
   end
+
+  if dicts.domains then
+    inputs:add(nn.LookupTable(dicts.domains:size(), opt.domain_vec_size))
+    inputSize = inputSize + opt.domain_vec_size
+  end
+
+  local inputNetwork = nn.Sequential()
+    :add(inputs)
+    :add(nn.JoinTable(2))
 
   if opt.input_feed == 1 then
     if verbose then

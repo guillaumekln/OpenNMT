@@ -8,10 +8,12 @@ function Dataset:__init(srcData, tgtData)
 
   self.src = srcData.words
   self.srcFeatures = srcData.features
+  self.srcDomains = srcData.domains or {}
 
   if tgtData ~= nil then
     self.tgt = tgtData.words
     self.tgtFeatures = tgtData.features
+    self.tgtDomains = tgtData.domains or {}
   end
 end
 
@@ -66,7 +68,8 @@ end
 --[[ Get batch `idx`. If nil make a batch of all the data. ]]
 function Dataset:getBatch(idx)
   if idx == nil or self.batchRange == nil then
-    return onmt.data.Batch.new(self.src, self.srcFeatures, self.tgt, self.tgtFeatures)
+    return onmt.data.Batch.new(self.src, self.srcFeatures, self.srcDomains,
+                               self.tgt, self.tgtFeatures, self.tgtDomains)
   end
 
   local rangeStart = self.batchRange[idx]["begin"]
@@ -77,6 +80,9 @@ function Dataset:getBatch(idx)
 
   local srcFeatures = {}
   local tgtFeatures = {}
+
+  local srcDomains = {}
+  local tgtDomains = {}
 
   for i = rangeStart, rangeEnd do
     table.insert(src, self.src[i])
@@ -89,9 +95,17 @@ function Dataset:getBatch(idx)
     if self.tgtFeatures[i] then
       table.insert(tgtFeatures, self.tgtFeatures[i])
     end
+
+    if self.srcDomains[i] then
+      table.insert(srcDomains, self.srcDomains[i])
+    end
+
+    if self.tgtDomains[i] then
+      table.insert(tgtDomains, self.tgtDomains[i])
+    end
   end
 
-  return onmt.data.Batch.new(src, srcFeatures, tgt, tgtFeatures)
+  return onmt.data.Batch.new(src, srcFeatures, srcDomains, tgt, tgtFeatures, tgtDomains)
 end
 
 return Dataset

@@ -44,7 +44,7 @@ local Batch = torch.class('Batch')
 --[[ Create a batch object given aligned sent tables `src` and `tgt`
   (optional). Data format is shown at the top of the file.
 --]]
-function Batch:__init(src, srcFeatures, tgt, tgtFeatures)
+function Batch:__init(src, srcFeatures, srcDomains, tgt, tgtFeatures, tgtDomains)
   if tgt ~= nil then
     assert(#src == #tgt, "source and target must have the same batch size")
   end
@@ -67,6 +67,10 @@ function Batch:__init(src, srcFeatures, tgt, tgtFeatures)
     end
   end
 
+  if #srcDomains > 0 then
+    self.sourceDomainInput = torch.IntTensor(self.size):fill(onmt.Constants.PAD)
+  end
+
   if tgt ~= nil then
     self.targetLength, self.targetSize, self.targetNonZeros = getLength(tgt, 1)
 
@@ -82,6 +86,10 @@ function Batch:__init(src, srcFeatures, tgt, tgtFeatures)
         table.insert(self.targetInputFeatures, targetSeq:clone())
         table.insert(self.targetOutputFeatures, targetSeq:clone())
       end
+    end
+
+    if #tgtDomains > 0 then
+      self.targetDomainInput = torch.IntTensor(self.size):fill(onmt.Constants.PAD)
     end
   end
 
@@ -106,6 +114,10 @@ function Batch:__init(src, srcFeatures, tgt, tgtFeatures)
       self.sourceInputRevFeatures[i][{{1, self.sourceSize[b]}, b}]:copy(sourceInputRevFeatures)
     end
 
+    if #srcDomains > 0 then
+      self.sourceDomainInput[b] = srcDomains[b]
+    end
+
     if tgt ~= nil then
       -- Input: [<s>ABCDE]
       -- Ouput: [ABCDE</s>]
@@ -124,34 +136,52 @@ function Batch:__init(src, srcFeatures, tgt, tgtFeatures)
         self.targetInputFeatures[i][{{1, targetLength}, b}]:copy(targetInputFeatures)
         self.targetOutputFeatures[i][{{1, targetLength}, b}]:copy(targetOutputFeatures)
       end
+
+      if #tgtDomains > 0 then
+        self.targetDomainInput[b] = tgtDomains[b]
+      end
     end
   end
 end
 
 function Batch:getSourceInput(t)
-  -- If a regular input, return word id, otherwise a table with features.
+  local input = self.sourceInput[t]
+
   if #self.sourceInputFeatures > 0 then
-    local inputs = {self.sourceInput[t]}
+    input = { input }
     for j = 1, #self.sourceInputFeatures do
-      table.insert(inputs, self.sourceInputFeatures[j][t])
+      table.insert(input, self.sourceInputFeatures[j][t])
     end
-    return inputs
-  else
-    return self.sourceInput[t]
   end
+
+  if self.sourceDomainInput then
+    if type(input) ~= 'table' then
+      input = { input }
+    end
+    table.insert(input, self.sourceDomainInput)
+  end
+
+  return input
 end
 
 function Batch:getTargetInput(t)
-  -- If a regular input, return word id, otherwise a table with features.
+  local input = self.targetInput[t]
+
   if #self.targetInputFeatures > 0 then
-    local inputs = {self.targetInput[t]}
+    input = { input }
     for j = 1, #self.targetInputFeatures do
-      table.insert(inputs, self.targetInputFeatures[j][t])
+      table.insert(input, self.targetInputFeatures[j][t])
     end
-    return inputs
-  else
-    return self.targetInput[t]
   end
+
+  if self.targetDomainInput then
+    if type(input) ~= 'table' then
+      input = { input }
+    end
+    table.insert(input, self.targetDomainInput)
+  end
+
+  return input
 end
 
 function Batch:getTargetOutput(t)
