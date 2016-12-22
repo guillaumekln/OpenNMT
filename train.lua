@@ -32,7 +32,7 @@ cmd:option('-feat_merge', 'concat', [[Merge action for the features embeddings: 
 cmd:option('-feat_vec_exponent', 0.7, [[When using concatenation, if the feature takes N values
                                       then the embedding dimension will be set to N^exponent]])
 cmd:option('-feat_vec_size', 20, [[When using sum, the common embedding size of the features]])
-cmd:option('-domain_vec_size', 80, [[Domain embedding size]])
+cmd:option('-domain_vec_size', 6, [[Domain embedding size]])
 cmd:option('-input_feed', 1, [[Feed the context vector at each time step as additional input (via concatenation with the word embeddings) to the decoder.]])
 cmd:option('-residual', false, [[Add residual connections between RNN layers.]])
 cmd:option('-brnn', false, [[Use a bidirectional encoder]])
