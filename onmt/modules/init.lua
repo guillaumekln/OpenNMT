@@ -6,6 +6,7 @@ require('onmt.modules.BiEncoder')
 require('onmt.modules.Decoder')
 
 require('onmt.modules.LSTM')
+require('onmt.modules.MaxIndex')
 
 require('onmt.modules.MaskedSoftmax')
 require('onmt.modules.WordEmbedding')

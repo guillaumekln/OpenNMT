@@ -14,28 +14,32 @@ Parameters:
   * `outputSize` - Output size (number of tokens).
   * `features` - table of feature sizes.
 --]]
-function FeaturesGenerator:__init(rnnSize, outputSize, features)
+function FeaturesGenerator:__init(rnnSize, outputSize, targetLookup, features)
   parent.__init(self)
-  self.net = self:_buildGenerator(rnnSize, outputSize, features)
+  self.net = self:_buildGenerator(rnnSize, outputSize, targetLookup, features)
   self:add(self.net)
 end
 
-function FeaturesGenerator:_buildGenerator(rnnSize, outputSize, features)
-  local generator = nn.ConcatTable()
+function FeaturesGenerator:_buildGenerator(rnnSize, outputSize, targetLookup, features)
+  local outputs = {}
 
-  -- Add default generator.
-  generator:add(nn.Sequential()
-                  :add(onmt.Generator(rnnSize, outputSize))
-                  :add(nn.SelectTable(1)))
+  local decOut = nn.Identity()()
 
-  -- Add a generator for each target feature.
+  local wordGen = nn.SelectTable(1)(onmt.Generator(rnnSize, outputSize)(decOut))
+  table.insert(outputs, wordGen)
+
+  local bestWord = onmt.MaxIndex(1, 1)(wordGen)
+  local bestWordEmb = targetLookup(bestWord)
+
+  local context = nn.JoinTable(2)({decOut, bestWordEmb})
+
   for i = 1, #features do
-    generator:add(nn.Sequential()
-                    :add(nn.Linear(rnnSize, features[i]:size()))
-                    :add(nn.LogSoftMax()))
+    local map = nn.Linear(rnnSize + targetLookup.vecSize, features[i]:size())(context)
+    local loglk = nn.LogSoftMax()(map)
+    table.insert(outputs, loglk)
   end
 
-  return generator
+  return nn.gModule({decOut}, outputs)
 end
 
 function FeaturesGenerator:updateOutput(input)

@@ -36,7 +36,7 @@ local function buildInputNetwork(opt, dicts, pretrainedWords, fixWords)
     inputNetwork = inputs
   end
 
-  return inputNetwork, inputSize
+  return inputNetwork, inputSize, wordEmbedding
 end
 
 local function buildEncoder(opt, dicts)
@@ -67,12 +67,13 @@ local function buildEncoder(opt, dicts)
 end
 
 local function buildDecoder(opt, dicts, verbose)
-  local inputNetwork, inputSize = buildInputNetwork(opt, dicts, opt.pre_word_vecs_dec, opt.fix_word_vecs_dec)
+  local inputNetwork, inputSize, wordEmbedding =
+    buildInputNetwork(opt, dicts, opt.pre_word_vecs_dec, opt.fix_word_vecs_dec)
 
   local generator
 
   if #dicts.features > 0 then
-    generator = onmt.FeaturesGenerator.new(opt.rnn_size, dicts.words:size(), dicts.features)
+    generator = onmt.FeaturesGenerator.new(opt.rnn_size, dicts.words:size(), wordEmbedding, dicts.features)
   else
     generator = onmt.Generator.new(opt.rnn_size, dicts.words:size())
   end

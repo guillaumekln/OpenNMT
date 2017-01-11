@@ -89,11 +89,10 @@ local function generateTarget(dicts, tgt, cdata)
   end
 
   for j = 1, #dicts do
-    -- Target features are shifted relative to the target words.
-    -- Use EOS tokens as a placeholder.
-    table.insert(tgt[j], 1, onmt.Constants.BOS_WORD)
-    table.insert(tgt[j], 1, onmt.Constants.EOS_WORD)
-    tgtId[j] = dicts[j]:convertToIdx(tgt[j], onmt.Constants.UNK_WORD)
+    tgtId[j] = dicts[j]:convertToIdx(tgt[j],
+                                     onmt.Constants.UNK_WORD,
+                                     onmt.Constants.BOS_WORD,
+                                     onmt.Constants.EOS_WORD)
   end
 
   return tgtId
