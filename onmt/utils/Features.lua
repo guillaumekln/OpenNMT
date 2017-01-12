@@ -40,8 +40,8 @@ local function annotate(tokens, features, dicts)
   end
 
   for i = 1, #tokens do
-    for j = 1, #features[i + 1] do
-      tokens[i] = tokens[i] .. '￨' .. dicts[j]:lookup(features[i + 1][j])
+    for j = 1, #features[i] do
+      tokens[i] = tokens[i] .. '￨' .. dicts[j]:lookup(features[i][j])
     end
   end
 
