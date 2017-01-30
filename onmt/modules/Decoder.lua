@@ -17,14 +17,14 @@ Inherits from [onmt.Sequencer](onmt+modules+Sequencer).
 local Decoder, parent = torch.class('onmt.Decoder', 'onmt.Sequencer')
 
 
---[[ Construct an encoder layer.
+--[[ Construct a decoder layer.
 
 Parameters:
 
-  * `inputNetwork` - input module.
-  * `rnn` - recurrent module.
-  * `generator` - optional, a output [onmt.Generator](onmt+modules+Generator).
-  * `inputFeed` - enable input feeding.
+  * `inputNetwork` - input nn module.
+  * `rnn` - recurrent module, such as [onmt.LSTM](onmt+modules+LSTM).
+  * `generator` - optional, an output [onmt.Generator](onmt+modules+Generator).
+  * `inputFeed` - bool, enable input feeding.
 --]]
 function Decoder:__init(inputNetwork, rnn, generator, inputFeed)
   self.rnn = rnn
@@ -195,16 +195,16 @@ end
 
 Parameters:
 
- * `input` - sparse input (1)
- * `prevStates` - stack of hidden states (batch x layers*model x rnnSize)
- * `context` - encoder output (batch x n x rnnSize)
- * `prevOut` - previous distribution (batch x #words)
- * `t` - current timestep
+  * `input` - input to be passed to inputNetwork.
+  * `prevStates` - stack of hidden states (batch x layers*model x rnnSize)
+  * `context` - encoder output (batch x n x rnnSize)
+  * `prevOut` - previous distribution (batch x #words)
+  * `t` - current timestep
 
 Returns:
 
- 1. `out` - Top-layer Hidden state
- 2. `states` - All states
+ 1. `out` - Top-layer hidden state.
+ 2. `states` - All states.
 --]]
 function Decoder:forwardOne(input, prevStates, context, prevOut, t)
   local inputs = {}
@@ -235,6 +235,10 @@ function Decoder:forwardOne(input, prevStates, context, prevOut, t)
   end
 
   local outputs = self:net(t):forward(inputs)
+
+  -- Make sure decoder always returns table.
+  if type(outputs) ~= "table" then outputs = { outputs } end
+
   local out = outputs[#outputs]
   local states = {}
   for i = 1, #outputs - 1 do
@@ -248,9 +252,9 @@ end
 
   Parameters:
 
-  * `batch` - as defined in batch.lua
-  * `encoderStates`
-  * `context`
+  * `batch` - `Batch` object
+  * `encoderStates` -
+  * `context` -
   * `func` - Calls `func(out, t)` each timestep.
 --]]
 
@@ -258,7 +262,7 @@ function Decoder:forwardAndApply(batch, encoderStates, context, func)
   -- TODO: Make this a private method.
 
   if self.statesProto == nil then
-    self.statesProto = onmt.utils.Tensor.initTensorTable(self.args.numEffectiveLayers,
+    self.statesProto = onmt.utils.Tensor.initTensorTable(#encoderStates,
                                                          self.stateProto,
                                                          { batch.size, self.args.rnnSize })
   end
@@ -277,14 +281,17 @@ end
 
   Parameters:
 
-  * `batch` - as defined in batch.lua
-  * `encoderStates` - the final encoder states
+  * `batch` - a `Batch` object.
+  * `encoderStates` - a batch of initial decoder states (optional) [0]
   * `context` - the context to apply attention to.
 
-  Returns: Tables of top hidden layer at each timestep.
-
+  Returns: Table of top hidden state for each timestep.
 --]]
 function Decoder:forward(batch, encoderStates, context)
+  encoderStates = encoderStates
+    or onmt.utils.Tensor.initTensorTable(self.args.numEffectiveLayers,
+                                         onmt.utils.Cuda.convert(torch.Tensor()),
+                                         { batch.size, self.args.rnnSize })
   if self.train then
     self.inputs = {}
   end
@@ -298,16 +305,16 @@ function Decoder:forward(batch, encoderStates, context)
   return outputs
 end
 
---[[ Compute the standard backward update.
+--[[ Compute the backward update.
 
-  Parameters:
+Parameters:
 
-  * `batch`
-  * `outputs`
-  * `criterion`
+  * `batch` - a `Batch` object
+  * `outputs` - expected outputs
+  * `criterion` - a single target criterion object
 
-  Note: This code is both the standard backward and criterion forward/backward.
-  It returns both the gradInputs (ret 1 and 2) and the loss.
+  Note: This code runs both the standard backward and criterion forward/backward.
+  It returns both the gradInputs and the loss.
   -- ]]
 function Decoder:backward(batch, outputs, criterion)
   if self.gradOutputsProto == nil then
@@ -326,19 +333,27 @@ function Decoder:backward(batch, outputs, criterion)
   for t = batch.targetLength, 1, -1 do
     -- Compute decoder output gradients.
     -- Note: This would typically be in the forward pass.
+    _G.profiler:start("generator.fwd")
     local pred = self.generator:forward(outputs[t])
+    _G.profiler:stop("generator.fwd")
     local output = batch:getTargetOutput(t)
 
+    _G.profiler:start("criterion.fwd")
     loss = loss + criterion:forward(pred, output)
+    _G.profiler:stop("criterion.fwd")
 
     -- Compute the criterion gradient.
+    _G.profiler:start("criterion.bwd")
     local genGradOut = criterion:backward(pred, output)
+    _G.profiler:stop("criterion.bwd")
     for j = 1, #genGradOut do
       genGradOut[j]:div(batch.totalSize)
     end
 
     -- Compute the final layer gradient.
+    _G.profiler:start("generator.bwd")
     local decGradOut = self.generator:backward(outputs[t], genGradOut)
+    _G.profiler:stop("generator.bwd")
     gradStatesInput[#gradStatesInput]:add(decGradOut)
 
     -- Compute the standarad backward.
@@ -362,8 +377,22 @@ function Decoder:backward(batch, outputs, criterion)
   return gradStatesInput, gradContextInput, loss
 end
 
---[[ Compute the loss on a batch based on final layer `generator`.]]
+--[[ Compute the loss on a batch.
+
+Parameters:
+
+  * `batch` - a `Batch` to score.
+  * `encoderStates` - initialization of decoder.
+  * `context` - the attention context.
+  * `criterion` - a pointwise criterion.
+
+--]]
 function Decoder:computeLoss(batch, encoderStates, context, criterion)
+  encoderStates = encoderStates
+    or onmt.utils.Tensor.initTensorTable(self.args.numEffectiveLayers,
+                                         onmt.utils.Cuda.convert(torch.Tensor()),
+                                         { batch.size, self.args.rnnSize })
+
   local loss = 0
   self:forwardAndApply(batch, encoderStates, context, function (out, t)
     local pred = self.generator:forward(out)
@@ -374,10 +403,22 @@ function Decoder:computeLoss(batch, encoderStates, context, criterion)
   return loss
 end
 
---[[ Compute the cumulative score of a target sequence.
-  Used in decoding when gold data are provided.
-]]
+
+--[[ Compute the score of a batch.
+
+Parameters:
+
+  * `batch` - a `Batch` to score.
+  * `encoderStates` - initialization of decoder.
+  * `context` - the attention context.
+
+--]]
 function Decoder:computeScore(batch, encoderStates, context)
+  encoderStates = encoderStates
+    or onmt.utils.Tensor.initTensorTable(self.args.numEffectiveLayers,
+                                         onmt.utils.Cuda.convert(torch.Tensor()),
+                                         { batch.size, self.args.rnnSize })
+
   local score = {}
 
   self:forwardAndApply(batch, encoderStates, context, function (out, t)

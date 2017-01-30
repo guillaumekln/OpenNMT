@@ -2,13 +2,10 @@
   A nngraph unit that maps features ids to embeddings. When using multiple
   features this can be the concatenation or the sum of each individual embedding.
 ]]
-local FeaturesEmbedding, parent = torch.class('onmt.FeaturesEmbedding', 'nn.Container')
+local FeaturesEmbedding, parent = torch.class('onmt.FeaturesEmbedding', 'onmt.Network')
 
 function FeaturesEmbedding:__init(dicts, dimExponent, dim, merge)
-  parent.__init(self)
-
-  self.net = self:_buildModel(dicts, dimExponent, dim, merge)
-  self:add(self.net)
+  parent.__init(self, self:_buildModel(dicts, dimExponent, dim, merge))
 end
 
 function FeaturesEmbedding:_buildModel(dicts, dimExponent, dim, merge)
@@ -20,8 +17,6 @@ function FeaturesEmbedding:_buildModel(dicts, dimExponent, dim, merge)
   else
     self.outputSize = 0
   end
-
-  self.embs = {}
 
   for i = 1, #dicts do
     local feat = nn.Identity()() -- batchSize
@@ -37,8 +32,7 @@ function FeaturesEmbedding:_buildModel(dicts, dimExponent, dim, merge)
       self.outputSize = self.outputSize + embSize
     end
 
-    self.embs[i] = onmt.WordEmbedding(vocabSize, embSize)
-    local emb = self.embs[i](feat)
+    local emb = nn.LookupTable(vocabSize, embSize)(feat)
 
     if not output then
       output = emb
@@ -50,23 +44,4 @@ function FeaturesEmbedding:_buildModel(dicts, dimExponent, dim, merge)
   end
 
   return nn.gModule(inputs, {output})
-end
-
-function FeaturesEmbedding:updateOutput(input)
-  self.output = self.net:updateOutput(input)
-  return self.output
-end
-
-function FeaturesEmbedding:updateGradInput(input, gradOutput)
-  return self.net:updateGradInput(input, gradOutput)
-end
-
-function FeaturesEmbedding:accGradParameters(input, gradOutput, scale)
-  self.net:accGradParameters(input, gradOutput, scale)
-end
-
-function FeaturesEmbedding:share(other, ...)
-  for i = 1, #self.embs do
-    self.embs[i]:share(other.embs[i], ...)
-  end
 end

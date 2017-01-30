@@ -1,8 +1,8 @@
---[[ Data management and batch creation. ]]
+--[[ Data management and batch creation. Handles data created by `preprocess.lua`. ]]
 local Dataset = torch.class("Dataset")
 
---[[ Initialize a data object given aligned tables of IntTensors `src`
-  and `tgt`.
+--[[ Initialize a data object given aligned tables of IntTensors `srcData`
+  and `tgtData`.
 --]]
 function Dataset:__init(srcData, tgtData)
 
@@ -49,24 +49,26 @@ function Dataset:setBatchSize(maxBatchSize)
 
     self.maxSourceLength = math.max(self.maxSourceLength, self.src[i]:size(1))
 
-    -- Target contains <s> and </s>.
-    local targetSeqLength = self.tgt[i]:size(1) - 1
-    targetLength = math.max(targetLength, targetSeqLength)
-    self.maxTargetLength = math.max(self.maxTargetLength, targetSeqLength)
+    if self.tgt ~= nil then
+      -- Target contains <s> and </s>.
+      local targetSeqLength = self.tgt[i]:size(1) - 1
+      targetLength = math.max(targetLength, targetSeqLength)
+      self.maxTargetLength = math.max(self.maxTargetLength, targetSeqLength)
+    end
   end
+  -- Catch last batch.
+  table.insert(self.batchRange, { ["begin"] = offset, ["end"] = #self.src })
 end
 
 --[[ Return number of batches. ]]
 function Dataset:batchCount()
-
   if self.batchRange == nil then
     return 1
   end
-
   return #self.batchRange
 end
 
---[[ Get batch `idx`. If nil make a batch of all the data. ]]
+--[[ Get `Batch` number `idx`. If nil make a batch of all the data. ]]
 function Dataset:getBatch(idx)
   if idx == nil or self.batchRange == nil then
     return onmt.data.Batch.new(self.src, self.srcFeatures, self.srcDomains,
@@ -77,7 +79,11 @@ function Dataset:getBatch(idx)
   local rangeEnd = self.batchRange[idx]["end"]
 
   local src = {}
-  local tgt = {}
+  local tgt
+
+  if self.tgt ~= nil then
+    tgt = {}
+  end
 
   local srcFeatures = {}
   local tgtFeatures = {}
@@ -87,14 +93,17 @@ function Dataset:getBatch(idx)
 
   for i = rangeStart, rangeEnd do
     table.insert(src, self.src[i])
-    table.insert(tgt, self.tgt[i])
 
     if self.srcFeatures[i] then
       table.insert(srcFeatures, self.srcFeatures[i])
     end
 
-    if self.tgtFeatures[i] then
-      table.insert(tgtFeatures, self.tgtFeatures[i])
+    if self.tgt ~= nil then
+      table.insert(tgt, self.tgt[i])
+
+      if self.tgtFeatures[i] then
+        table.insert(tgtFeatures, self.tgtFeatures[i])
+      end
     end
 
     if self.srcDomains[i] then

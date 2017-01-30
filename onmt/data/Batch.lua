@@ -20,7 +20,7 @@ end
 
 --[[ Data management and batch creation.
 
-Batch interface [size]:
+Batch interface reference [size]:
 
   * size: number of sentences in the batch [1]
   * sourceLength: max length in source batch [1]
@@ -39,12 +39,31 @@ Batch interface [size]:
 
  TODO: change name of size => maxlen
 --]]
+
+
+--[[ A batch of sentences to translate and targets. Manages padding,
+  features, and batch alignment (for efficiency).
+
+  Used by the decoder and encoder objects.
+--]]
 local Batch = torch.class('Batch')
 
---[[ Create a batch object given aligned sent tables `src` and `tgt`
-  (optional). Data format is shown at the top of the file.
+--[[ Create a batch object.
+
+Parameters:
+
+  * `src` - 2D table of source batch indices
+  * `srcFeatures` - 2D table of source batch features (opt)
+  * `tgt` - 2D table of target batch indices
+  * `tgtFeatures` - 2D table of target batch features (opt)
 --]]
 function Batch:__init(src, srcFeatures, srcDomains, tgt, tgtFeatures, tgtDomains)
+  src = src or {}
+  srcFeatures = srcFeatures or {}
+  tgtFeatures = tgtFeatures or {}
+  srcDomains = srcDomains or {}
+  tgtDomains = tgtDomains or {}
+
   if tgt ~= nil then
     assert(#src == #tgt, "source and target must have the same batch size")
   end
@@ -144,52 +163,116 @@ function Batch:__init(src, srcFeatures, srcDomains, tgt, tgtFeatures, tgtDomains
   end
 end
 
+--[[ Set source input directly,
+
+Parameters:
+
+  * `sourceInput` - a Tensor of size (sequence_length, batch_size, feature_dim)
+  ,or a sequence of size (sequence_length, batch_size). Be aware that sourceInput is not cloned here.
+
+--]]
+function Batch:setSourceInput(sourceInput)
+  assert (sourceInput:dim() >= 2, 'The sourceInput tensor should be of size (seq_len, batch_size, ...)')
+  self.size = sourceInput:size(2)
+  self.sourceLength = sourceInput:size(1)
+  self.sourceInputFeatures = {}
+  self.sourceInputRevReatures = {}
+  self.sourceInput = sourceInput
+  self.sourceInputRev = self.sourceInput:index(1, torch.linspace(self.sourceLength, 1, self.sourceLength):long())
+  return self
+end
+
+--[[ Set target input directly.
+
+Parameters:
+
+  * `targetInput` - a tensor of size (sequence_length, batch_size). Padded with onmt.Constants.PAD. Be aware that targetInput is not cloned here.
+--]]
+function Batch:setTargetInput(targetInput)
+  assert (targetInput:dim() == 2, 'The targetInput tensor should be of size (seq_len, batch_size)')
+  self.targetInput = targetInput
+  self.size = targetInput:size(2)
+  self.totalSize = self.size
+  self.targetLength = targetInput:size(1)
+  self.targetInputFeatures = {}
+  self.targetSize = torch.sum(targetInput:transpose(1,2):ne(onmt.Constants.PAD), 2):view(-1):double()
+  return self
+end
+
+--[[ Set target output directly.
+
+Parameters:
+
+  * `targetOutput` - a tensor of size (sequence_length, batch_size). Padded with onmt.Constants.PAD.  Be aware that targetOutput is not cloned here.
+--]]
+function Batch:setTargetOutput(targetOutput)
+  assert (targetOutput:dim() == 2, 'The targetOutput tensor should be of size (seq_len, batch_size)')
+  self.targetOutput = targetOutput
+  self.targetOutputFeatures = {}
+  return self
+end
+
+local function addInputFeatures(inputs, featuresSeq, t)
+  local features = {}
+  for j = 1, #featuresSeq do
+    table.insert(features, featuresSeq[j][t])
+  end
+  if #features > 1 then
+    table.insert(inputs, features)
+  else
+    onmt.utils.Table.append(inputs, features)
+  end
+end
+
+--[[ Get source input batch at timestep `t`. --]]
 function Batch:getSourceInput(t)
-  local input = self.sourceInput[t]
+  -- If a regular input, return word id, otherwise a table with features.
+  local inputs = self.sourceInput[t]
 
   if #self.sourceInputFeatures > 0 then
-    input = { input }
-    for j = 1, #self.sourceInputFeatures do
-      table.insert(input, self.sourceInputFeatures[j][t])
-    end
+    inputs = { inputs }
+    addInputFeatures(inputs, self.sourceInputFeatures, t)
   end
 
   if self.sourceDomainInput then
-    if type(input) ~= 'table' then
-      input = { input }
+    if type(inputs) ~= 'table' then
+      inputs = { inputs }
     end
-    table.insert(input, self.sourceDomainInput)
+    table.insert(inputs, self.sourceDomainInput)
   end
 
-  return input
+  return inputs
 end
 
+--[[ Get target input batch at timestep `t`. --]]
 function Batch:getTargetInput(t)
-  local input = self.targetInput[t]
+  -- If a regular input, return word id, otherwise a table with features.
+  local inputs = self.targetInput[t]
 
   if #self.targetInputFeatures > 0 then
-    input = { input }
-    for j = 1, #self.targetInputFeatures do
-      table.insert(input, self.targetInputFeatures[j][t])
-    end
+    inputs = { inputs }
+    addInputFeatures(inputs, self.targetInputFeatures, t)
   end
 
   if self.targetDomainInput then
-    if type(input) ~= 'table' then
-      input = { input }
+    if type(inputs) ~= 'table' then
+      inputs = { inputs }
     end
-    table.insert(input, self.targetDomainInput)
+    table.insert(inputs, self.targetDomainInput)
   end
 
-  return input
+  return inputs
 end
 
+--[[ Get target output batch at timestep `t` (values t+1). --]]
 function Batch:getTargetOutput(t)
   -- If a regular input, return word id, otherwise a table with features.
   local outputs = { self.targetOutput[t] }
+
   for j = 1, #self.targetOutputFeatures do
     table.insert(outputs, self.targetOutputFeatures[j][t])
   end
+
   return outputs
 end
 

@@ -11,6 +11,18 @@ local function recursiveClone(out)
   end
 end
 
+--[[ Recursively add `b` tensors into `a`'s. ]]
+local function recursiveAdd(a, b)
+  if torch.isTensor(a) then
+    a:add(b)
+  else
+    for i = 1, #a do
+      recursiveAdd(a[i], b[i])
+    end
+  end
+  return a
+end
+
 local function recursiveSet(dst, src)
   if torch.isTensor(dst) then
     dst:set(src)
@@ -23,15 +35,11 @@ end
 
 --[[ Clone any serializable Torch object. ]]
 local function deepClone(obj)
-  local mem = torch.MemoryFile("w"):binary()
+  local mem = torch.MemoryFile("rw"):binary()
   mem:writeObject(obj)
-
-  local reader = torch.MemoryFile(mem:storage(), "r"):binary()
-  local clone = reader:readObject()
-
-  reader:close()
+  mem:seek(1)
+  local clone = mem:readObject()
   mem:close()
-
   return clone
 end
 
@@ -153,6 +161,7 @@ end
 
 return {
   recursiveClone = recursiveClone,
+  recursiveAdd = recursiveAdd,
   recursiveSet = recursiveSet,
   deepClone = deepClone,
   reuseTensor = reuseTensor,

@@ -24,7 +24,6 @@ Parameters:
 function Encoder:__init(inputNetwork, rnn)
   self.rnn = rnn
   self.inputNet = inputNetwork
-  self.inputNet.name = 'inputNetwork'
 
   self.args = {}
   self.args.rnnSize = self.rnn.outputSize
@@ -41,12 +40,6 @@ function Encoder.load(pretrained)
 
   self.args = pretrained.args
   parent.__init(self, pretrained.modules[1])
-
-  self.network:apply(function (m)
-    if m.name == 'inputNetwork' then
-      self.inputNet = m
-    end
-  end)
 
   self:resetPreallocation()
 
@@ -110,10 +103,6 @@ function Encoder:_buildModel()
   return nn.gModule(inputs, { outputs })
 end
 
-function Encoder:shareInput(other)
-  self.inputNet:share(other.inputNet, 'weight', 'gradWeight')
-end
-
 --[[Compute the context representation of an input.
 
 Parameters:
@@ -167,6 +156,9 @@ function Encoder:forward(batch)
     end
     states = self:net(t):forward(inputs)
 
+    -- Make sure it always returns table.
+    if type(states) ~= "table" then states = { states } end
+
     -- Special case padding.
     if self.maskPad then
       for b = 1, batch.size do
@@ -198,10 +190,10 @@ end
   Parameters:
 
   * `batch` - must be same as for forward
-  * `gradStatesOutput` gradient of loss wrt last state
+  * `gradStatesOutput` gradient of loss wrt last state - this can be null if states are not used
   * `gradContextOutput` - gradient of loss wrt full context.
 
-  Returns: nil
+  Returns: `gradInputs` of input network.
 --]]
 function Encoder:backward(batch, gradStatesOutput, gradContextOutput)
   -- TODO: change this to (input, gradOutput) as in nngraph.
@@ -212,7 +204,14 @@ function Encoder:backward(batch, gradStatesOutput, gradContextOutput)
                                                               { batch.size, outputSize })
   end
 
-  local gradStatesInput = onmt.utils.Tensor.copyTensorTable(self.gradOutputsProto, gradStatesOutput)
+  local gradStatesInput
+  if gradStatesOutput then
+    gradStatesInput = onmt.utils.Tensor.copyTensorTable(self.gradOutputsProto, gradStatesOutput)
+  else
+    -- if gradStatesOutput is not defined - start with empty tensor
+    gradStatesInput = onmt.utils.Tensor.reuseTensorTable(self.gradOutputsProto, { batch.size, outputSize })
+  end
+
   local gradInputs = {}
 
   for t = batch.sourceLength, 1, -1 do

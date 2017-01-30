@@ -6,25 +6,37 @@ local tester = torch.Tester()
 local stringTest = torch.TestSuite()
 
 function stringTest.noSplit()
-  tester:eq(onmt.utils.String.split('foo-foo', '%-|%-'), { 'foo-foo' })
+  tester:eq(onmt.utils.String.split('foo-foo', '￨'), { 'foo-foo' })
 end
 function stringTest.emptySplit2()
-  tester:eq(onmt.utils.String.split('-|-', '%-|%-'), { '', '' })
+  tester:eq(onmt.utils.String.split('￨', '￨'), { '', '' })
 end
 function stringTest.emptySplit1Right()
-  tester:eq(onmt.utils.String.split('foo-|-', '%-|%-'), { 'foo', '' })
+  tester:eq(onmt.utils.String.split('foo￨', '￨'), { 'foo', '' })
 end
 function stringTest.emptySplit1Middle()
-  tester:eq(onmt.utils.String.split('foo-|--|-bar', '%-|%-'), { 'foo', '', 'bar' })
+  tester:eq(onmt.utils.String.split('foo￨￨bar', '￨'), { 'foo', '', 'bar' })
 end
 function stringTest.emptySplit1Left()
-  tester:eq(onmt.utils.String.split('-|-foo', '%-|%-'), { '', 'foo' })
+  tester:eq(onmt.utils.String.split('￨foo', '￨'), { '', 'foo' })
 end
 function stringTest.split2()
-  tester:eq(onmt.utils.String.split('foo-|-bar', '%-|%-'), { 'foo', 'bar' })
+  tester:eq(onmt.utils.String.split('foo￨bar', '￨'), { 'foo', 'bar' })
 end
 function stringTest.split3()
-  tester:eq(onmt.utils.String.split('foo-|-bar-|-foobar', '%-|%-'), { 'foo', 'bar', 'foobar' })
+  tester:eq(onmt.utils.String.split('foo￨bar￨foobar', '￨'), { 'foo', 'bar', 'foobar' })
+end
+function stringTest.ignoreEscaping1()
+  tester:eq(onmt.utils.String.split('foo\\￨bar', '￨'), { 'foo\\', 'bar' })
+end
+function stringTest.ignoreEscaping2()
+  tester:eq(onmt.utils.String.split('foo\\￨bar￨foobar', '￨'), { 'foo\\', 'bar', 'foobar' })
+end
+function stringTest.ignoreEscaping3()
+  tester:eq(onmt.utils.String.split('\\￨', '￨'), { '\\', '' })
+end
+function stringTest.ignoreEscaping4()
+  tester:eq(onmt.utils.String.split('\\\\￨N', '￨'), { '\\\\', 'N' })
 end
 
 function stringTest.noStrip()
@@ -42,6 +54,25 @@ end
 
 tester:add(stringTest)
 
+local profileTest = torch.TestSuite()
+
+function profileTest.profiling()
+  local profiler = onmt.utils.Profiler.new({profiler=true})
+  profiler:start("main")
+  local count = 0
+  while count < 100 do count = count+1 end
+  profiler:start("a")
+  while count < 1000 do count = count+1 end
+  profiler:stop("a"):start("b.c")
+  while count < 10000 do count = count+1 end
+  profiler:stop("b.c"):start("b.d"):stop("b.d")
+  profiler:stop("main")
+  local v=profiler:log():gsub("[-0-9.e]+","*")
+  tester:assert(v=="main:{total:*,a:*,b:{total:*,d:*,c:*}}" or v == "main:{total:*,a:*,b:{total:*,c:*,d:*}}"
+                or v == "main:{total:*,b:{total:*,c:*,d:*},a:*}" or v == "main:{total:*,b:{total:*,d:*,c:*},a:*}")
+end
+
+tester:add(profileTest)
 
 local tensorTest = torch.TestSuite()
 
@@ -156,38 +187,38 @@ function dictTest.pruneSmallerWithSpecialTokens()
   tester:ne(pruned:lookup('titi'), nil)
 end
 
+function dictTest.pruneInvariableSpecialTokensIndex()
+  local d = onmt.utils.Dict.new({ 'toto', 'titi' })
+  d:add('foo')
+  d:add('bar')
+  d:add('foobar')
+  d:add('bar')
+  d:add('foobar')
+  d:add('bar')
+
+  local totoIndex = d:lookup('toto')
+  local titiIndex = d:lookup('titi')
+
+  local pruned = d:prune(2)
+  tester:eq(pruned:lookup('toto'), totoIndex)
+  tester:eq(pruned:lookup('titi'), titiIndex)
+end
+
 tester:add(dictTest)
 
 
-local nmttest = torch.TestSuite()
-
--- local function equal(t1, t2, msg)
---    if (torch.type(t1) == "table") then
---       for k, _ in pairs(t2) do
---          equal(t1[k], t2[k], msg)
---       end
---    else
---       tester:eq(t1, t2, 0.00001, msg)
---    end
--- end
-
-
-function nmttest.Data()
-end
-
-tester:add(nmttest)
-
-function onmt.test(tests, fixedSeed)
+local function main()
   -- Limit number of threads since everything is small
   local nThreads = torch.getnumthreads()
   torch.setnumthreads(1)
 
-   -- Randomize stuff
-  local seed = fixedSeed or (1e5 * torch.tic())
-  print('Seed: ', seed)
-  math.randomseed(seed)
-  torch.manualSeed(seed)
-  tester:run(tests)
+  tester:run()
+
   torch.setnumthreads(nThreads)
-  return tester
+
+  if tester.errors[1] then
+    os.exit(1)
+  end
 end
+
+main()

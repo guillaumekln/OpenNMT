@@ -34,14 +34,19 @@ Inherits from [onmt.Sequencer](onmt+modules+Sequencer).
 --]]
 local BiEncoder, parent = torch.class('onmt.BiEncoder', 'nn.Container')
 
---[[ Creates two Encoder's (encoder.lua) `netFwd` and `netBwd`.
-  The two are combined use `merge` operation (concat/sum).
+--[[ Create a bi-encoder.
+
+Parameters:
+
+  * `input` - input neural network.
+  * `rnn` - recurrent template module.
+  * `merge` - fwd/bwd merge operation {"concat", "sum"}
 ]]
 function BiEncoder:__init(input, rnn, merge)
   parent.__init(self)
 
   self.fwd = onmt.Encoder.new(input, rnn)
-  self.bwd = onmt.Encoder.new(input:clone(), rnn:clone())
+  self.bwd = onmt.Encoder.new(input:clone('weight', 'bias', 'gradWeight', 'gradBias'), rnn:clone())
 
   self.args = {}
   self.args.merge = merge
@@ -113,10 +118,6 @@ function BiEncoder:forward(batch)
     self.statesProto = onmt.utils.Tensor.initTensorTable(self.args.numEffectiveLayers,
                                                          self.stateProto,
                                                          { batch.size, self.args.hiddenSize })
-
-    if self.train then
-      self.bwd:shareInput(self.fwd)
-    end
   end
 
   local states = onmt.utils.Tensor.reuseTensorTable(self.statesProto, { batch.size, self.args.hiddenSize })
@@ -154,6 +155,11 @@ function BiEncoder:forward(batch)
 end
 
 function BiEncoder:backward(batch, gradStatesOutput, gradContextOutput)
+  gradStatesOutput = gradStatesOutput
+    or onmt.utils.Tensor.initTensorTable(self.args.numEffectiveLayers,
+                                         onmt.utils.Cuda.convert(torch.Tensor()),
+                                         { batch.size, self.args.rnnSize*2 })
+
   local gradContextOutputFwd
   local gradContextOutputBwd
 
@@ -178,15 +184,21 @@ function BiEncoder:backward(batch, gradStatesOutput, gradContextOutput)
     gradStatesOutputBwd = gradStatesOutput
   end
 
-  self.fwd:backward(batch, gradStatesOutputFwd, gradContextOutputFwd)
+  local gradInputFwd = self.fwd:backward(batch, gradStatesOutputFwd, gradContextOutputFwd)
 
   -- reverse gradients of the backward context
   local gradContextBwd = onmt.utils.Tensor.reuseTensor(self.gradContextBwdProto,
-                                                         { batch.size, batch.sourceLength, self.args.rnnSize })
+                                                       { batch.size, batch.sourceLength, self.args.rnnSize })
 
   for t = 1, batch.sourceLength do
     gradContextBwd[{{}, t}]:copy(gradContextOutputBwd[{{}, batch.sourceLength - t + 1}])
   end
 
-  self.bwd:backward(batch, gradStatesOutputBwd, gradContextBwd)
+  local gradInputBwd = self.bwd:backward(batch, gradStatesOutputBwd, gradContextBwd)
+
+  for t = 1, batch.sourceLength do
+    onmt.utils.Tensor.recursiveAdd(gradInputFwd[t], gradInputBwd[batch.sourceLength - t + 1])
+  end
+
+  return gradInputFwd
 end
