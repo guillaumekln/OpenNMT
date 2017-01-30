@@ -77,7 +77,7 @@ function Translator:buildData(srcBatch, srcFeaturesBatch, srcDomainsBatch,
         table.insert(srcData.domains, self.dicts.src.domains:lookup(srcDomainsBatch[b]))
       end
 
-      if tgtData ~= nil then
+      if goldBatch ~= nil then
         table.insert(tgtData.words,
                      self.dicts.tgt.words:convertToIdx(goldBatch[b],
                                                        onmt.Constants.UNK_WORD,
