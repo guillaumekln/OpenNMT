@@ -88,10 +88,10 @@ function Translator:buildData(srcBatch, srcFeaturesBatch, srcDomainsBatch,
           table.insert(tgtData.features,
                        onmt.utils.Features.generateTarget(self.dicts.tgt.features, goldFeaturesBatch[b]))
         end
+      end
 
-        if self.dicts.tgt.domains then
-          table.insert(tgtData.domains, self.dicts.tgt.domains:lookup(tgtDomainsBatch[b]))
-        end
+      if self.dicts.tgt.domains then
+        table.insert(tgtData.domains, self.dicts.tgt.domains:lookup(tgtDomainsBatch[b]))
       end
     end
   end
