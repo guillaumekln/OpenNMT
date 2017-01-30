@@ -148,7 +148,7 @@ local function main()
         timer:resume()
       end
 
-      local predBatch, info = translator.translate(srcWordsBatch,
+      local predBatch, info = translator:translate(srcWordsBatch,
                                                    srcFeaturesBatch,
                                                    srcDomainsBatch,
                                                    tgtWordsBatch,
