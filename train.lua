@@ -27,11 +27,12 @@ cmd:text("")
 cmd:option('-layers', 2, [[Number of layers in the RNN encoder/decoder]])
 cmd:option('-rnn_size', 500, [[Size of RNN hidden states]])
 cmd:option('-rnn_type', 'LSTM', [[Type of RNN cell: LSTM, GRU]])
-cmd:option('-word_vec_size', 500, [[Word embedding sizes]])
+cmd:option('-word_vec_size', 0, [[Common word embedding size. If set, this overrides -src_word_vec_size and -tgt_word_vec_size.]])
+cmd:option('-src_word_vec_size', '500', [[Comma-separated list of source embedding sizes: word[,feat1,feat2,...].]])
+cmd:option('-tgt_word_vec_size', '500', [[Comma-separated list of target embedding sizes: word[,feat1,feat2,...].]])
 cmd:option('-feat_merge', 'concat', [[Merge action for the features embeddings: concat or sum]])
-cmd:option('-feat_vec_exponent', 0.7, [[When using concatenation, if the feature takes N values
-                                      then the embedding dimension will be set to N^exponent]])
-cmd:option('-feat_vec_size', 20, [[When using sum, the common embedding size of the features]])
+cmd:option('-feat_vec_exponent', 0.7, [[When features embedding sizes are not set and using -feat_merge concat, their dimension will be set to N^exponent where N is the number of values the feature takes.]])
+cmd:option('-feat_vec_size', 20, [[When features embedding sizes are not set and using -feat_merge sum, this is the common embedding size of the features]])
 cmd:option('-domain_vec_size', 6, [[Domain embedding size]])
 cmd:option('-input_feed', 1, [[Feed the context vector at each time step as additional input (via concatenation with the word embeddings) to the decoder.]])
 cmd:option('-residual', false, [[Add residual connections between RNN layers.]])
@@ -216,7 +217,7 @@ local function trainModel(model, trainData, validData, dataset, info)
     learningRate = opt.learning_rate,
     learningRateDecay = opt.learning_rate_decay,
     startDecayAt = opt.start_decay_at,
-    optimStates = opt.optim_states
+    optimStates = (info and info.optimStates) or nil
   })
 
   local checkpoint = onmt.train.Checkpoint.new(opt, model, optim, dataset.dicts)
@@ -367,7 +368,7 @@ local function trainModel(model, trainData, validData, dataset, info)
             -- Send batch data to the GPU.
             onmt.utils.Cuda.convert(_G.batch)
             _G.batch.totalSize = _G.batch.size
-            local loss = trainNetwork()
+            local loss = trainNetwork(_G.batch)
 
             -- Update the parameters.
             optim:prepareGrad(_G.gradParams, opt.max_grad_norm)
@@ -480,7 +481,6 @@ local function main()
       opt.curriculum = checkpoint.options.curriculum
 
       opt.learning_rate = checkpoint.info.learningRate
-      opt.optim_states = checkpoint.info.optimStates
       opt.start_epoch = checkpoint.info.epoch
       opt.start_iteration = checkpoint.info.iteration
 

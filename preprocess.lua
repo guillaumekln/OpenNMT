@@ -24,8 +24,8 @@ cmd:option('-valid_tgt_domains', '', [[Path to the validation target domains]])
 
 cmd:option('-save_data', '', [[Output file for the prepared data]])
 
-cmd:option('-src_vocab_size', 50000, [[Size of the source vocabulary]])
-cmd:option('-tgt_vocab_size', 50000, [[Size of the target vocabulary]])
+cmd:option('-src_vocab_size', '50000', [[Comma-separated list of source vocabularies size: word[,feat1,feat2,...].]])
+cmd:option('-tgt_vocab_size', '50000', [[Comma-separated list of target vocabularies size: word[,feat1,feat2,...].]])
 cmd:option('-src_vocab', '', [[Path to an existing source vocabulary]])
 cmd:option('-tgt_vocab', '', [[Path to an existing target vocabulary]])
 cmd:option('-features_vocabs_prefix', '', [[Path prefix to existing features vocabularies]])
@@ -174,7 +174,7 @@ local function makeData(srcFile, srcDomainsFile, srcDicts, tgtFile, tgtDomainsFi
   end
 
   _G.logger:info('... sorting sentences by size')
-  local _, perm = torch.sort(vecToTensor(sizes), true)
+  local _, perm = torch.sort(vecToTensor(sizes))
   reorderData(perm)
 
   _G.logger:info('Prepared ' .. #src .. ' sentences (' .. ignored
