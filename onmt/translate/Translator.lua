@@ -128,7 +128,7 @@ function Translator:buildData(src, gold)
     end
   end
 
-  return onmt.data.Dataset.new(srcData, goldData), ignored, indexMap
+  return onmt.data.Dataset.new(srcData, tgtData), ignored, indexMap
 end
 
 function Translator:buildTargetWords(pred, src, attn)
