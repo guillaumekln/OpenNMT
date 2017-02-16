@@ -87,7 +87,7 @@ function Batch:__init(src, srcFeatures, srcDomains, tgt, tgtFeatures, tgtDomains
   end
 
   if #srcDomains > 0 then
-    self.sourceDomainInput = torch.IntTensor(self.size):fill(onmt.Constants.PAD)
+    self.sourceDomainInput = torch.LongTensor(self.size):fill(onmt.Constants.PAD)
   end
 
   if tgt ~= nil then
@@ -109,7 +109,7 @@ function Batch:__init(src, srcFeatures, srcDomains, tgt, tgtFeatures, tgtDomains
   end
 
   if #tgtDomains > 0 then
-    self.targetDomainInput = torch.IntTensor(self.size):fill(onmt.Constants.PAD)
+    self.targetDomainInput = torch.LongTensor(self.size):fill(onmt.Constants.PAD)
   end
 
   for b = 1, self.size do
