@@ -23,6 +23,7 @@ modelClass.declareOpts(cmd)
 onmt.train.Optim.declareOpts(cmd)
 onmt.train.Trainer.declareOpts(cmd)
 onmt.train.Checkpoint.declareOpts(cmd)
+onmt.utils.Pruner.declareOpts(cmd)
 onmt.utils.CrayonLogger.declareOpts(cmd)
 onmt.data.SampledDataset.declareOpts(cmd)
 

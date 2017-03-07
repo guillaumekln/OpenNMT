@@ -75,24 +75,27 @@ end
 
 function Optim:__init(args, optimStates)
   self.args = onmt.utils.ExtendedCmdLine.getModuleOpts(args, options)
-  self.valPerf = {}
+  self.args.prune_at = onmt.utils.String.split(args.prune_at, ',')
+  self.args.prune_ratio = onmt.utils.String.split(args.prune_ratio, ',')
 
-  if self.args.optim == 'sgd' then
-    self.args.start_decay_at = args.start_decay_at
+  assert(#self.args.prune_at == #self.args.prune_ratio)
+
+  for i = 1, #self.args.prune_at do
+    self.args.prune_at[i] = tonumber(self.args.prune_at[i])
+    self.args.prune_ratio[i] = tonumber(self.args.prune_ratio[i])
+  end
+
+  self.valPerf = {}
+  if optimStates ~= nil then
+    self.optimStates = optimStates
   else
-    if optimStates ~= nil then
-      self.optimStates = optimStates
-    else
-      self.optimStates = {}
-    end
+    self.optimStates = {}
   end
 end
 
 function Optim:setOptimStates(num)
-  if self.args.optim ~= 'sgd' then
-    for j = 1, num do
-      self.optimStates[j] = {}
-    end
+  for _ = 1, num do
+    table.insert(self.optimStates, {})
   end
 end
 
@@ -118,6 +121,10 @@ function Optim:prepareGrad(gradParams)
       gradParams[j]:mul(shrinkage)
     end
 
+    if self.optimStates[j].pruner then
+      self.optimStates[j].pruner:maskGradients(gradParams[j])
+    end
+
     -- Prepare gradients params according to the optimization method.
     if self.args.optim == 'adagrad' then
       adagradStep(gradParams[j], self.args.learning_rate, self.optimStates[j])
@@ -134,6 +141,24 @@ end
 function Optim:updateParams(params, gradParams)
   for j = 1, #params do
     params[j]:add(gradParams[j])
+  end
+end
+
+function Optim:updateScheduler(epoch, params)
+  if #self.args.prune_at > 0 then
+    if self.args.prune_at[1] + 1 == epoch then
+      _G.logger:info('Pruning %d%% of the parameters...', self.args.prune_ratio[1] * 100)
+
+      for j = 1, #params do
+        if not self.optimStates[j].pruner then
+          self.optimStates[j].pruner = onmt.utils.Pruner.new()
+        end
+        self.optimStates[j].pruner:reset(params[j], self.args.prune_ratio[1])
+      end
+
+      table.remove(self.args.prune_ratio, 1)
+      table.remove(self.args.prune_at, 1)
+    end
   end
 end
 

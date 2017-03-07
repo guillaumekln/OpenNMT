@@ -91,6 +91,8 @@ function Trainer:train(model, optim, trainData, validData, dataset, info)
   optim:setOptimStates(#params[1])
 
   local function trainEpoch(epoch, doProfile)
+    optim:updateScheduler(epoch, params[1])
+
     local epochProfiler = onmt.utils.Profiler.new(doProfile)
 
     local startI = self.args.start_iteration
