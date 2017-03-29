@@ -7,6 +7,7 @@ local cmd = onmt.utils.ExtendedCmdLine.new('release_model.lua')
 local options = {
   {'-model', '', 'trained model file'},
   {'-output_model', '', 'released model file'},
+  {'-quantize', false, 'quantize weights'},
   {'-force', false, 'force output model creation'}
 }
 
@@ -20,6 +21,42 @@ onmt.utils.Cuda.declareOpts(cmd)
 onmt.utils.Logger.declareOpts(cmd)
 
 local opt = cmd:parse(arg)
+
+-- Define QuantizeLinear layer.
+local QuantizedLinear, parent = torch.class('onmt.QuantizedLinear', 'nn.Module')
+
+function QuantizedLinear:__init(linear)
+  parent.__init(self)
+
+  self.weight = linear.weight:clone()
+  self.s = torch.abs(self.weight):max(2)
+  self.weight = self.weight:cdiv(self.s:expandAs(self.weight)):mul(127):round():byte()
+
+  if linear.bias then
+    self.bias = linear.bias:clone()
+  end
+end
+
+local function quantize(model)
+  -- Make parameters storage independent.
+  model:apply(function (m)
+    if m.weight then
+      m.weight = m.weight:clone()
+    end
+    if m.bias then
+      m.bias = m.bias:clone()
+    end
+  end)
+
+  -- Replace Linear layers by QuantizedLinear layers.
+  model:replace(function(m)
+    if torch.typename(m) == 'nn.Linear' then
+      return onmt.QuantizedLinear(m)
+    else
+      return m
+    end
+  end)
+end
 
 local function releaseModel(model, tensorCache)
   tensorCache = tensorCache or {}
@@ -37,6 +74,9 @@ local function releaseModel(model, tensorCache)
           end
         end
       end)
+      if opt.quantize then
+        quantize(submodule)
+      end
     end
   end
 end
