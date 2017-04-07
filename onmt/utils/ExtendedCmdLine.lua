@@ -95,10 +95,9 @@ function ExtendedCmdLine:help(arg, doMd)
     io.write('`' .. self.script .. '` options:\n')
     for _, option in ipairs(self.helplines) do
       if type(option) == 'table' then
-        io.write('* ')
         if option.default ~= nil then -- It is an option.
-          local args = type(option.default) == 'boolean' and '' or ' <' .. type(option.default) .. '>'
-          io.write('`' .. option.key .. args ..'`')
+          local args = type(option.default) == 'boolean' and '' or ' <' .. type(option.default) .. '\\>'
+          io.write('\n' .. option.key .. args .. '\n:    ')
 
           local valInfo = {}
           if option.meta and option.meta.enum then
@@ -111,10 +110,8 @@ function ExtendedCmdLine:help(arg, doMd)
             table.insert(valInfo, 'default: `' .. tostring(option.default) .. '`')
           end
           if #valInfo > 0 then
-            io.write(' (' .. table.concat(valInfo, '; ') .. ')')
+            io.write('(' .. table.concat(valInfo, '; ') .. ')<br/>')
           end
-
-          io.write('<br/>')
 
           option.help = option.help:gsub(' *\n   *', ' ')
           if option.help then
