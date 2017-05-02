@@ -77,13 +77,11 @@ function Trainer:__init(args, model, dicts, firstBatch)
   model:training()
 
   self.model = model
-  self.params = {}
-  self.gradParams = {}
 
   if not onmt.train.Saver.checkpointDefined(args) then
-    self.params[1], self.gradParams[1] = model:initParams()
+    self.params, self.gradParams = model:initParams()
   else
-    self.params[1], self.gradParams[1] = model:getParams()
+    self.params, self.gradParams = model:getParams()
   end
 
   -- If enabled, share internal buffers to optimize for memory.
@@ -99,22 +97,6 @@ function Trainer:__init(args, model, dicts, firstBatch)
   if self.args.profiler then
     model:enableProfiling()
   end
-
-  -- Create network replicas.
-  onmt.utils.Parallel.launch(function(idx)
-    _G.model = idx == 1 and model or onmt.utils.Tensor.deepClone(model)
-
-    if self.params[idx] then
-      _G.params, _G.gradParams = self.params[idx], self.gradParams[idx]
-    else
-      _G.params, _G.gradParams = _G.model:getParams()
-    end
-
-    return idx, _G.params, _G.gradParams
-  end, function(idx, params, gradParams)
-    self.params[idx] = params
-    self.gradParams[idx] = gradParams
-  end)
 end
 
 function Trainer:eval(data)
@@ -134,182 +116,29 @@ function Trainer:eval(data)
   return math.exp(loss / totalWords)
 end
 
-function Trainer:trainEpoch(data, epoch, startIteration, batchOrder)
-  local function getBatchIdx(idx)
-    return batchOrder and batchOrder[idx] or idx
-  end
+function Trainer:countIterations(data)
+  return data:batchCount()
+end
 
+function Trainer:trainLoop(...)
+  error('unimplemented abstract method')
+end
+
+function Trainer:trainEpoch(data, epoch, startIteration, batchOrder)
   startIteration = startIteration or 1
 
-  local numIterations = data:batchCount()
-  -- In parallel mode, the number of iterations is reduced to reflect larger batch size.
-  if onmt.utils.Parallel.count > 1 and not self.args.async_parallel then
-    numIterations = math.ceil(numIterations / onmt.utils.Parallel.count)
+  if not batchOrder then
+    batchOrder = torch.linspace(1, data:batchCount(), data.batchCount)
   end
 
-  local epochState = onmt.train.EpochState.new(epoch, startIteration, numIterations, self.optim:getLearningRate())
+  local epochState = onmt.train.EpochState.new(epoch,
+                                               startIteration,
+                                               self:countIterations(data),
+                                               self.optim:getLearningRate())
   local epochProfiler = onmt.utils.Profiler.new(self.args.profiler)
+
   epochProfiler:add('train')
-
-  local needLog = false
-  local optim = self.optim
-  local doProfile = self.args.profiler
-
-  if not self.args.async_parallel then
-    -- Synchronous training.
-    local iter = startIteration
-    for i = startIteration, data:batchCount(), onmt.utils.Parallel.count do
-      local batches = {}
-      local totalSize = 0
-      needLog = true
-
-      for j = 1, math.min(onmt.utils.Parallel.count, data:batchCount() - i + 1) do
-        local batchIdx = getBatchIdx(i + j - 1)
-        table.insert(batches, data:getBatch(batchIdx))
-        totalSize = totalSize + batches[#batches].size
-      end
-
-      local losses = {}
-      local indvAvgLosses = {}
-
-      onmt.utils.Parallel.launch(function(idx)
-        _G.profiler = onmt.utils.Profiler.new(doProfile)
-
-        _G.batch = batches[idx]
-        if _G.batch == nil then
-          return idx, 0, nil, _G.profiler:dump()
-        end
-
-        -- Send batch data to the GPU.
-        onmt.utils.Cuda.convert(_G.batch)
-        _G.batch.totalSize = totalSize
-
-        optim:zeroGrad(_G.gradParams)
-        local loss, indvAvgLoss = _G.model:trainNetwork(_G.batch)
-
-        return idx, loss, indvAvgLoss, _G.profiler:dump()
-      end,
-      function(idx, loss, indvAvgLoss, profile)
-        losses[idx] = loss
-        if data.needIndividualLosses and data:needIndividualLosses() then
-          indvAvgLosses[idx] = indvAvgLoss
-        end
-        epochProfiler:add(profile)
-      end)
-
-      -- Accumulate the gradients from the different parallel threads.
-      onmt.utils.Parallel.accGradParams(self.gradParams, batches)
-
-      -- Update the parameters.
-      self.optim:prepareGrad(self.gradParams[1])
-      self.optim:updateParams(self.params[1], self.gradParams[1])
-
-      -- Synchronize the parameters with the different parallel threads.
-      onmt.utils.Parallel.syncParams(self.params)
-
-      for bi = 1, #batches do
-        epochState:update(self.model, batches[bi], losses[bi])
-        if data.needIndividualLosses and data:needIndividualLosses() then
-          data:setLoss(getBatchIdx(i + bi - 1), indvAvgLosses[bi])
-        end
-      end
-
-      if iter % self.args.report_every == 0 then
-        epochState:log(iter)
-        needLog = false
-      end
-      if self.args.save_every > 0 and iter % self.args.save_every == 0 then
-        self.saver:saveIteration(iter, epochState, batchOrder)
-      end
-      iter = iter + 1
-    end
-  else
-    -- Asynchronous training.
-    local counter = onmt.utils.Parallel.getCounter()
-    local masterGPU = onmt.utils.Cuda.gpuIds[1]
-    local gradBuffer = onmt.utils.Parallel.gradBuffer
-    local gmutexId = onmt.utils.Parallel.gmutexId()
-
-    local maxConcurrentIter = self.args.report_every
-    if self.args.save_every > 0 and self.args.save_every < maxConcurrentIter then
-      maxConcurrentIter = self.args.save_every
-    end
-    local iter = 0
-
-    counter:set(startIteration)
-
-    local minBatch = self.args.async_parallel_minbatch
-    local mainParams = self.params[1]
-
-    while counter:get() <= data:batchCount() do
-      needLog = true
-      local startCounter = counter:get()
-
-      onmt.utils.Parallel.launch(function(idx)
-        _G.profiler = onmt.utils.Profiler.new(doProfile)
-        -- First GPU is only used for master parameters.
-        -- Use 1 GPU only for 1000 first batch.
-        if idx == 1 or (idx > 2 and epoch == 1 and counter:get() < minBatch) then
-          return
-        end
-
-        local batches = {}
-        local losses = {}
-        local indvAvgLosses = {}
-
-        while true do
-          local i = counter:inc()
-          if i - startCounter >= maxConcurrentIter or i > data:batchCount() then
-            return batches, losses, indvAvgLosses, _G.profiler:dump()
-          end
-
-          local batchIdx = getBatchIdx(i)
-
-          _G.batch = data:getBatch(batchIdx)
-          table.insert(batches, onmt.utils.Tensor.deepClone(_G.batch))
-          onmt.utils.Cuda.convert(_G.batch)
-
-          optim:zeroGrad(_G.gradParams)
-          local loss, indvAvgLoss = _G.model:trainNetwork(_G.batch)
-          table.insert(losses, loss)
-          if data.needIndividualLosses and data:needIndividualLosses() then
-            indvAvgLosses[batchIdx] = indvAvgLoss
-          end
-
-            -- Update the parameters.
-          optim:prepareGrad(_G.gradParams)
-
-          -- Add up gradParams to params and synchronize back to this thread.
-          onmt.utils.Parallel.updateAndSync(mainParams, _G.gradParams, _G.params, gradBuffer, masterGPU, gmutexId)
-        end
-      end,
-      function(batches, losses, indvAvgLosses, profile)
-        if batches then
-          iter = iter + #batches
-          for i = 1, #batches do
-            epochState:update(self.model, batches[i], losses[i])
-            if data.needIndividualLosses and data:needIndividualLosses() then
-              data:setLoss(getBatchIdx(i), indvAvgLosses[getBatchIdx(i)])
-            end
-          end
-          epochProfiler:add(profile)
-        end
-      end)
-
-      if iter % self.args.report_every == 0 then
-        epochState:log()
-        needLog = false
-      end
-      if iter % self.args.save_every == 0 then
-        self.saver:saveIteration(iter, epochState, batchOrder)
-      end
-    end
-  end
-
-  if needLog then
-    epochState:log(numIterations)
-  end
-
+  self:trainLoop(data, batchOrder, epochState, epochProfiler)
   epochProfiler:stop('train')
 
   if self.args.profiler then

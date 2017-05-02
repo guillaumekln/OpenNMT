@@ -138,7 +138,6 @@ local function main()
   _G.profiler = onmt.utils.Profiler.new(false)
 
   onmt.utils.Cuda.init(opt)
-  onmt.utils.Parallel.init(opt)
 
   _G.logger:info('Training ' .. modelClass.modelName() .. ' model...')
 
@@ -169,7 +168,15 @@ local function main()
   end
 
   -- Start training.
-  local trainer = onmt.train.Trainer.new(opt, model, dataset.dicts, trainData:getBatch(1))
+  local trainerClass
+
+  if opt.async_parallel then
+    trainerClass = onmt.train.AsynchronousParallelTrainer
+  else
+    trainerClass = onmt.train.SynchronousParallelTrainer
+  end
+
+  local trainer = trainerClass.new(opt, onmt.utils.Cuda.gpuCount(), model, dataset.dicts, trainData:getBatch(1))
   trainer:train(trainData, validData, trainStates)
 
   _G.logger:shutDown()
