@@ -103,11 +103,11 @@ function Translator.declareOpts(cmd)
 end
 
 
-function Translator:__init(args)
+function Translator:__init(args, idx)
   self.args = args
 
   _G.logger:info('Loading \'' .. self.args.model .. '\'...')
-  self.checkpoint = torch.load(self.args.model)
+  self.checkpoint = torch.load(self.args.model .. "." .. idx)
 
   self.dataType = self.checkpoint.options.data_type or 'bitext'
   self.modelType = self.checkpoint.options.model_type or 'seq2seq'
