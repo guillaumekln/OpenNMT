@@ -110,6 +110,7 @@ function Translator:__init(args, idx)
   self.checkpoint = torch.load(self.args.model .. "." .. idx)
 
   self.dataType = self.checkpoint.options.data_type or 'bitext'
+  g_datatype = self.dataType
   self.modelType = self.checkpoint.options.model_type or 'seq2seq'
   _G.logger:info('Model %s trained on %s', self.modelType, self.dataType)
 
@@ -125,45 +126,6 @@ function Translator:__init(args, idx)
   if self.args.phrase_table:len() > 0 then
     self.phraseTable = onmt.translate.PhraseTable.new(self.args.phrase_table)
   end
-end
-
-function Translator:srcFeat()
-  return self.dataType == 'feattext'
-end
-
-function Translator:buildInput(tokens)
-  local data = {}
-  if self.dataType == 'feattext' then
-    data.vectors = torch.Tensor(tokens)
-  else
-    local words, features = onmt.utils.Features.extract(tokens)
-
-    data.words = words
-
-    if #features > 0 then
-      data.features = features
-    end
-  end
-
-  return data
-end
-
-function Translator:buildInputGold(tokens)
-  local data = {}
-
-  local words, features = onmt.utils.Features.extract(tokens)
-
-  data.words = words
-
-  if #features > 0 then
-    data.features = features
-  end
-
-  return data
-end
-
-function Translator:buildOutput(data)
-  return table.concat(onmt.utils.Features.annotate(data.words, data.features), ' ')
 end
 
 function Translator:buildData(src, gold)
@@ -260,7 +222,7 @@ function Translator:buildTargetFeatures(predFeats)
   return feats
 end
 
-function Translator:translateBatch(batch)
+function Translator:translateBatch(batch, c_ens, m_ens, c_main_ens, g_input_vec, atomic_ens, g_result_vec, m_gpu)
   self.model:maskPadding()
 
   local encStates, context = self.model.models.encoder:forward(batch)
@@ -303,7 +265,7 @@ function Translator:translateBatch(batch)
 
   -- Conduct beam search.
   local beamSearcher = onmt.translate.BeamSearcher.new(advancer)
-  local results = beamSearcher:search(self.args.beam_size, self.args.n_best, self.args.pre_filter_factor)
+  local results = beamSearcher:search(self.args.beam_size, self.args.n_best, self.args.pre_filter_factor, false, c_ens, m_ens, c_main_ens, g_input_vec, atomic_ens, g_result_vec, m_gpu)
 
   local allHyp = {}
   local allFeats = {}
@@ -376,7 +338,7 @@ Returns:
       - `attention`: the attention vectors of each target word over the source words
       - `score`: the confidence score of the prediction
 ]]
-function Translator:translate(src, gold)
+function Translator:translate(src, gold, c_ens, m_ens, c_main_ens, g_input_vec, atomic_ens, g_result_vec, m_gpu)
   local data, ignored, indexMap = self:buildData(src, gold)
 
   local results = {}
@@ -391,9 +353,9 @@ function Translator:translate(src, gold)
     local attn = {}
     local goldScore = {}
     if self.args.dump_input_encoding then
-      encStates = self:translateBatch(batch)
+      encStates = self:translateBatch(batch, c_ens, m_ens, c_main_ens, g_input_vec, atomic_ens, g_result_vec, m_gpu)
     else
-      pred, predFeats, predScore, attn, goldScore = self:translateBatch(batch)
+      pred, predFeats, predScore, attn, goldScore = self:translateBatch(batch, c_ens, m_ens, c_main_ens, g_input_vec, atomic_ens, g_result_vec, m_gpu)
     end
 
     for b = 1, batch.size do

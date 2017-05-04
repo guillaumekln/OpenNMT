@@ -126,10 +126,37 @@ Returns:
   * `scores` - a 2D tensor of size `(batchSize * beamSize, numTokens)`.
 
 ]]
-function DecoderAdvancer:expand(beam)
+function DecoderAdvancer:expand(beam, c_ens, m_ens, c_main_ens, g_input_vec, atomic_ens, g_result_vec, m_gpu)
   local state = beam:getState()
   local decOut = state[2]
   local out = self.decoder.generator:forward(decOut)
+  
+  local ens_utils = require 'onmt.utils.ens_utils'
+  g_input_vec[__threadid] = ens_utils.convert_table_2_hash(out)
+
+  atomic_ens:inc()
+  if(atomic_ens:get() == g_nmodels)
+  then
+    c_main_ens:signal()
+  end
+
+  if((atomic_ens:get() == 4) and (g_nmodels >= 5))
+  then
+    for j = 1, g_nmodels-4 do
+      m_gpu[j]:unlock()
+    end
+  end
+  
+  c_ens[__threadid]:wait(m_ens[__threadid])
+
+  if((__threadid == 1 and g_nmodels >= 5) or (__threadid == 2 and g_nmodels >= 6) or
+      (__threadid == 3 and g_nmodels >= 7) or (__threadid == 4 and g_nmodels >= 8))
+  then
+    m_gpu[__threadid]:lock()
+  end
+  
+  out = ens_utils.convert_hash_2_table(g_result_vec[__threadid])
+  
   local features = {}
   for j = 2, #out do
     local _, best = out[j]:max(2)

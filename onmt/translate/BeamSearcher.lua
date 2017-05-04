@@ -40,7 +40,7 @@ and `finished[b][n].states` describe the n-th best hypothesis for b-th sample
 in the batch.
 
 ]]
-function BeamSearcher:search(beamSize, nBest, preFilterFactor, keepInitial)
+function BeamSearcher:search(beamSize, nBest, preFilterFactor, keepInitial, c_ens, m_ens, c_main_ens, g_input_vec, atomic_ens, g_result_vec, m_gpu)
   self.nBest = nBest or 1
   self.beamSize = beamSize or 1
   assert(self.nBest <= self.beamSize, 'beam size must be greater or equal to the n-best list size')
@@ -62,7 +62,7 @@ function BeamSearcher:search(beamSize, nBest, preFilterFactor, keepInitial)
     self.advancer:update(beams[t])
 
     -- Expand beams by all possible tokens and return the scores.
-    local scores = self.advancer:expand(beams[t])
+    local scores = self.advancer:expand(beams[t], c_ens, m_ens, c_main_ens, g_input_vec, atomic_ens, g_result_vec, m_gpu)
 
     -- Find k best next beams (maintained by BeamSearcher).
     self:_findKBest(beams, scores)

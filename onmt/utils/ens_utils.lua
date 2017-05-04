@@ -41,7 +41,51 @@ local function convert_hash_2_table(has)
   return var
 end
 
+
+function srcFeat()
+  return g_datatype == 'feattext'
+end
+
+function buildInput(tokens)
+  local data = {}
+  if g_datatype == 'feattext' then
+    data.vectors = torch.Tensor(tokens)
+  else
+    local words, features = onmt.utils.Features.extract(tokens)
+
+    data.words = words
+
+    if #features > 0 then
+      data.features = features
+    end
+  end
+
+  return data
+end
+
+function buildInputGold(tokens)
+  local data = {}
+
+  local words, features = onmt.utils.Features.extract(tokens)
+
+  data.words = words
+
+  if #features > 0 then
+    data.features = features
+  end
+
+  return data
+end
+
+function buildOutput(data)
+  return table.concat(onmt.utils.Features.annotate(data.words, data.features), ' ')
+end
+
 return {
   convert_table_2_hash = convert_table_2_hash,
-  convert_hash_2_table = convert_hash_2_table
+  convert_hash_2_table = convert_hash_2_table,
+  srcFeat = srcFeat,
+  buildInput = buildInput,
+  buildInputGold = buildInputGold,
+  buildOutput = buildOutput
 }

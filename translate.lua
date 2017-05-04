@@ -47,6 +47,7 @@ _G.logger = onmt.utils.Logger.new(opt.log_file, opt.disable_logs, opt.log_level)
 _G.profiler = onmt.utils.Profiler.new()
 local globalLogger = _G.logger
 local globalProfiler = _G.profiler
+local datatype
 
 local function check_available_models()
   local suffix = 1
@@ -151,12 +152,14 @@ local pool = threads.Threads(
     g_nmodels = nmodels
     _G.logger = globalLogger
     _G.profiler = globalProfiler
+    g_datatype = datatype
    end
 )
 
 local function main(c, m_main, c_main)
-
-  local srcReader = onmt.utils.FileReader.new(opt.src, opt.idx_files, translator:srcFeat())
+  local ens_utils = require 'onmt.utils.ens_utils'
+  
+  local srcReader = onmt.utils.FileReader.new(opt.src, opt.idx_files, ens_utils.srcFeat())
   local srcBatch = {}
   local srcIdBatch = {}
 
@@ -197,11 +200,11 @@ local function main(c, m_main, c_main)
     end
 
     if srcSeq ~= nil then
-      table.insert(srcBatch, translator:buildInput(srcSeq))
+      table.insert(srcBatch, ens_utils.buildInput(srcSeq))
       table.insert(srcIdBatch, srcSeqId)
 
       if withGoldScore then
-        table.insert(goldBatch, translator:buildInputGold(goldOutputSeq))
+        table.insert(goldBatch, ens_utils.buildInputGold(goldOutputSeq))
       end
     elseif #srcBatch == 0 then
       break
@@ -213,7 +216,7 @@ local function main(c, m_main, c_main)
       end
 
       for i = 1, nmodels do
-        g_input[i] = ens_utils.convert_table_2_hash(src_tokens)
+        g_input[i] = ens_utils.convert_table_2_hash(srcBatch)
 
         c[i]:signal()
       end
@@ -240,13 +243,13 @@ local function main(c, m_main, c_main)
           outFile:write('\n')
         else
           if srcBatch[b].words then
-            _G.logger:info('SENT %d: %s', sentId, translator:buildOutput(srcBatch[b]))
+            _G.logger:info('SENT %d: %s', sentId, ens_utils.buildOutput(srcBatch[b]))
           else
             _G.logger:info('FEATS %d: IDX - %s - SIZE %d', sentId, srcIdBatch[b], srcBatch[b].vectors:size(1))
           end
 
           if withGoldScore then
-            _G.logger:info('GOLD %d: %s', sentId, translator:buildOutput(goldBatch[b]), results[b].goldScore)
+            _G.logger:info('GOLD %d: %s', sentId, ens_utils.buildOutput(goldBatch[b]), results[b].goldScore)
             _G.logger:info("GOLD SCORE: %.2f", results[b].goldScore)
             goldScoreTotal = goldScoreTotal + results[b].goldScore
             goldWordsTotal = goldWordsTotal + #goldBatch[b].words
@@ -255,7 +258,7 @@ local function main(c, m_main, c_main)
             outFile:write(sentId, ' ', table.concat(torch.totable(results[b]), " "), '\n')
           else
             for n = 1, #results[b].preds do
-              local sentence = translator:buildOutput(results[b].preds[n])
+              local sentence = ens_utils.buildOutput(results[b].preds[n])
               outFile:write(sentence .. '\n')
               if n == 1 then
                 predScoreTotal = predScoreTotal + results[b].preds[n].score
@@ -352,8 +355,6 @@ for i=1, nmodels do
       require('onmt.init')
       onmt.utils.Cuda.init(opt, i)
 
-      local translator = onmt.translate.Translator.new(opt, i)
-      
       return __threadid
     end
   )
@@ -363,6 +364,8 @@ for i=1, nmodels do
   pool:addjob(i,
     function()
       require('onmt.init')
+      local translator = onmt.translate.Translator.new(opt, i)
+      
       local t_threads = require 'threads'
       local m = {}
       local c = {}
@@ -424,7 +427,7 @@ for i=1, nmodels do
           m_gpu[i]:lock()
         end
         
-        src_tokens = ens_utils.convert_hash_2_table(g_input[i])
+        srcBatch = ens_utils.convert_hash_2_table(g_input[i])
         
         local result = translator:translate(srcBatch, goldBatch, c_ens, m_ens, c_main_ens, g_input_vec, atomic_ens, g_result_vec, m_gpu)
         --print(result)
