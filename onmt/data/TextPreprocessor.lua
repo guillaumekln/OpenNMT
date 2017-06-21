@@ -1,27 +1,67 @@
-function TextPreprocessor:__init(dicts, withStartAndStop, featuresGenerator)
-  self.dicts = dicts
-  self.featuresGenerator = featuresGenerator
+local tds
 
-  self.metaTokens = { onmt.Constants.UNK_WORD }
-  if withStartAndStop then
-    onmt.utils.Table.append(self.metaTokens, { onmt.Constants.BOS_WORD, onmt.Constants.EOS_WORD })
-  end
+local TextPreprocessor, parent = torch.class('TextPreprocessor', 'Preprocessor')
+
+function TextPreprocessor:__init(dicts, maxLength)
+  self.dicts = dicts
+  parent.__init(self, maxLength)
 end
 
 function TextPreprocessor:next(file)
   local line = file:read()
-  local tokens = onmt.utils.String.split(line)
+  return self:process(line)
+end
 
+function TextPreprocessor:process(line)
+  local tokens = onmt.utils.String.split(line, ' ')
   local words, features = onmt.utils.Features.extract(tokens)
 
   local data = {}
   data.length = #tokens
-  data.input = self.dicts.words:convertToIdx(words, table.unpack(self.metaTokens))
-  data.pruned = data.input:eq(onmt.Constants.UNK):sum() / data.input:size(1)
+  data.input = self:convertWords(words)
+  data.pruned = data.input:eq(onmt.Constants.UNK):sum() / data.length
 
   if #self.dicts.features > 0 then
-    data.meta = self.featuresGenerator(self.dicts.features, features)
+    data.meta = self:convertFeatures(features)
   end
 
   return data
 end
+
+function TextPreprocessor:convertWords(words)
+  return self.dicts.words:convertToIdx(words, onmt.Constants.UNK_WORD)
+end
+
+function TextPreprocessor:convertFeatures(features)
+  local featuresIds = self:_initFeatures(features)
+
+  for j = 1, #self.dicts.features do
+    featuresIds[j] = self.dicts.features[j]:convertToIdx(features[j], onmt.Constants.UNK_WORD)
+  end
+
+  return featuresIds
+end
+
+function TextPreprocessor:_initFeatures(features)
+  assert(#self.dicts.features == #features,
+         "expected " .. #self.dicts.features .. " features, got " .. #features)
+
+  local featuresIds
+  local success
+
+  if not tds then
+    success, tds = pcall(require, 'tds')
+    if not success then
+      featuresIds = {}
+      tds = nil
+    else
+      featuresIds = tds.Vec()
+    end
+  else
+    featuresIds = tds.Vec()
+  end
+
+  return featuresIds
+end
+
+return TextPreprocessor

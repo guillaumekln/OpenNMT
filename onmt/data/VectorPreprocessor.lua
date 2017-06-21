@@ -1,4 +1,7 @@
-function VectorPreprocessor:__init()
+local VectorPreprocessor, parent = torch.class('VectorPreprocessor', 'Preprocessor')
+
+function VectorPreprocessor:__init(maxLength)
+  parent.__init(self, maxLength)
 end
 
 function VectorPreprocessor:next(file)
@@ -23,8 +26,15 @@ function VectorPreprocessor:next(file)
     table.insert(values, row)
   end
 
+  local tensor = torch.FloatTensor(values)
+  return self:process(tensor)
+end
+
+function VectorPreprocessor:process(tensor)
   local data = {}
-  data.input = torch.FloatTensor(values)
-  data.length = data.input:size(1)
+  data.input = tensor
+  data.length = tensor:size(1)
   return data
 end
+
+return VectorPreprocessor
