@@ -50,22 +50,16 @@ function TextPreprocessor:_initFeatures(features)
   assert(#self.dicts.features == #features,
          "expected " .. #self.dicts.features .. " features, got " .. #features)
 
-  local featuresIds
   local success
 
-  if not tds then
+  if tds == nil then
     success, tds = pcall(require, 'tds')
     if not success then
-      featuresIds = {}
-      tds = nil
-    else
-      featuresIds = tds.Vec()
+      tds = false
     end
-  else
-    featuresIds = tds.Vec()
   end
 
-  return featuresIds
+  return tds and tds.Vec() or {}
 end
 
 return TextPreprocessor
