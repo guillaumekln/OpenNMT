@@ -7,17 +7,22 @@ function TextPreprocessor:__init(dicts, maxLength)
   parent.__init(self, maxLength)
 end
 
-function TextPreprocessor:next(file)
+function TextPreprocessor:consume(file)
   local line = file:read()
-  return self:process(line)
+  return line
+end
+
+function TextPreprocessor:tokenize(line)
+  local tokens = onmt.utils.String.split(line, ' ')
+  local words, features = onmt.utils.Features.extract(tokens)
+  return words, features
 end
 
 function TextPreprocessor:process(line)
-  local tokens = onmt.utils.String.split(line, ' ')
-  local words, features = onmt.utils.Features.extract(tokens)
+  local words, features = self:tokenize(line)
 
   local data = {}
-  data.length = #tokens
+  data.length = #words
   data.input = self:convertWords(words)
   data.pruned = data.input:eq(onmt.Constants.UNK):sum() / data.length
 
