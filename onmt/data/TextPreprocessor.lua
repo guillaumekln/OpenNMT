@@ -8,8 +8,7 @@ function TextPreprocessor:__init(dicts, maxLength)
 end
 
 function TextPreprocessor:consume(file)
-  local line = file:read()
-  return line
+  return file:read()
 end
 
 function TextPreprocessor:tokenize(line)

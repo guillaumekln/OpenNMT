@@ -10,6 +10,11 @@ function VectorPreprocessor:consume(file)
 
   while not completed do
     local line = file:read()
+
+    if not line and #values == 0 then
+      return nil
+    end
+
     local parts = onmt.utils.String.split(line, ' ')
 
     if parts[1] == '[' then

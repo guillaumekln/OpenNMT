@@ -5,7 +5,12 @@ end
 -- Consume next from file and apply func.
 function Preprocessor:next(file, func)
   local item = self:consume(file)
-  return func(self, item)
+
+  if not item then
+    return nil
+  else
+    return func(self, item)
+  end
 end
 
 -- Consume next item in file.
