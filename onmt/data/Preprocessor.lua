@@ -1,8 +1,18 @@
+--[[ Base class for preprocessors: classes that process raw inputs into tensors. ]]
 function Preprocessor:__init(maxLength)
   self.maxLength = maxLength
 end
 
--- Consume next from file and apply func.
+--[[ Consume next item from a file and process it.
+
+Parameters:
+
+  * `file` - a file handle.
+  * `func` - a callable to process the item.
+
+Returns: the result of `func` applied to the next item, or nil if EOF is reached.
+
+]]
 function Preprocessor:next(file, func)
   local item = self:consume(file)
 
@@ -13,7 +23,15 @@ function Preprocessor:next(file, func)
   end
 end
 
--- Consume next item in file.
+--[[ Consume the next item from a file.
+
+Parameters:
+
+  * `file` - a file handle.
+
+Returns: the next item.
+
+]]
 function Preprocessor:consume(_)
   error('Not implemented')
 end
