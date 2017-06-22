@@ -5,14 +5,14 @@ function TargetTextPreprocessor:__init(dicts, maxLength, shiftFeatures)
   self.shiftFeatures = shiftFeatures
 end
 
-function TargetTextPreprocessor:convertWords(words)
+function TargetTextPreprocessor:processWords(words)
   return self.dicts.words:convertToIdx(words,
                                        onmt.Constants.UNK_WORD,
                                        onmt.Constants.BOS_WORD,
                                        onmt.Constants.EOS_WORD)
 end
 
-function TargetTextPreprocessor:convertFeatures(features)
+function TargetTextPreprocessor:processFeatures(features)
   local featuresIds = self:_initFeatures(features)
 
   for j = 1, #self.dicts.features do
