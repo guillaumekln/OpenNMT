@@ -1,19 +1,19 @@
-local TargetTextPreprocessor, parent = torch.class('TargetTextPreprocessor', 'TextPreprocessor')
+local TargetTextProcessor, parent = torch.class('TargetTextProcessor', 'TextProcessor')
 
-function TargetTextPreprocessor:__init(dicts, maxLength, shiftFeatures)
+function TargetTextProcessor:__init(dicts, maxLength, shiftFeatures)
   parent.__init(self, dicts, maxLength)
   self.shiftFeatures = shiftFeatures
 end
 
-function TargetTextPreprocessor:processWords(words)
+function TargetTextProcessor:processWords(words)
   return self.dicts.words:convertToIdx(words,
                                        onmt.Constants.UNK_WORD,
                                        onmt.Constants.BOS_WORD,
                                        onmt.Constants.EOS_WORD)
 end
 
-function TargetTextPreprocessor:processFeatures(features)
-  local featuresIds = self:_initFeatures(features)
+function TargetTextProcessor:processFeatures(features)
+  local featuresIds = {}
 
   for j = 1, #self.dicts.features do
     -- if shift_feature then target features are shifted relative to the target words.
@@ -38,4 +38,4 @@ function TargetTextPreprocessor:processFeatures(features)
   return featuresIds
 end
 
-return TargetTextPreprocessor
+return TargetTextProcessor

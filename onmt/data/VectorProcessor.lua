@@ -1,10 +1,10 @@
-local VectorPreprocessor, parent = torch.class('VectorPreprocessor', 'Preprocessor')
+local VectorProcessor, parent = torch.class('VectorProcessor', 'Processor')
 
-function VectorPreprocessor:__init(maxLength)
+function VectorProcessor:__init(maxLength)
   parent.__init(self, maxLength)
 end
 
-function VectorPreprocessor:consume(file)
+function VectorProcessor:consume(file)
   local values = {}
   local completed = false
 
@@ -34,18 +34,11 @@ function VectorPreprocessor:consume(file)
   return torch.FloatTensor(values)
 end
 
-function VectorPreprocessor:process(values)
+function VectorProcessor:process(values)
   local data = {}
-
-  if torch.isTensor(values) then
-    data.input = values
-  else
-    data.input = torch.FloatTensor(values)
-  end
-
+  data.input = torch.isTensor(values) and values or torch.FloatTensor(values)
   data.length = data.input:size(1)
-
   return data
 end
 
-return VectorPreprocessor
+return VectorProcessor

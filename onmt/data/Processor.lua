@@ -1,5 +1,7 @@
+local Processor = torch.class('Processor')
+
 --[[ Base class for preprocessors: classes that process raw inputs into tensors. ]]
-function Preprocessor:__init(maxLength)
+function Processor:__init(maxLength)
   self.maxLength = maxLength
 end
 
@@ -13,7 +15,7 @@ Parameters:
 Returns: the result of `func` applied to the next item, or nil if EOF is reached.
 
 ]]
-function Preprocessor:next(file, func)
+function Processor:next(file, func)
   local item = self:consume(file)
 
   if not item then
@@ -32,15 +34,17 @@ Parameters:
 Returns: the next item.
 
 ]]
-function Preprocessor:consume(_)
+function Processor:consume(_)
   error('Not implemented')
 end
 
 -- Process single item.
-function Preprocessor:process(_)
+function Processor:process(_)
   error('Not implemented')
 end
 
-function Preprocessor:isValid(data)
+function Processor:isValid(data)
   return data.length > 0 and (not self.maxLength or data.length <= self.maxLength)
 end
+
+return Processor
