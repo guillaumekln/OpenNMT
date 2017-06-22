@@ -6,11 +6,13 @@ local FileIterator = torch.class('FileIterator')
 Parameters:
 
   * `filename` - the file to iterate on.
+  * `transformer` - an optional `DataTransformer` to apply on items.
   * `indexed` - whether items are indexed by an identifier.
 
 ]]
-function FileIterator:__init(filename, indexed)
+function FileIterator:__init(filename, transformer, indexed)
   self.file = assert(io.open(filename, 'r'))
+  self.transformer = transformer
   self.indexed = indexed
   self.offset = 0
 end
@@ -32,8 +34,8 @@ end
 
 Returns:
 
-  * `id` - the item identifier.
   * `item` - the item.
+  * `id` - the item identifier.
 
 ]]
 function FileIterator:next()
@@ -51,7 +53,13 @@ function FileIterator:next()
     id = self.offset
   end
 
-  return id, self:_read()
+  local item = self:_read()
+
+  if self.transformer then
+    item = self.transformer:transform(item)
+  end
+
+  return item, id
 end
 
 --[[ Read the next line identifier as a string. ]]
