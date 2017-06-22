@@ -16,11 +16,6 @@ function FileIterator:__init(filename, indexed)
   self.offset = 0
 end
 
---[[ Assign a `DataTransformer`. ]]
-function FileIterator:setTransformer(transformer)
-  self.transformer = transformer
-end
-
 --[[ Close the file handle. ]]
 function FileIterator:close()
   self.file:close()
@@ -61,9 +56,6 @@ function FileIterator:next()
 
   local _, err = pcall(function ()
     item = self:_read()
-    if self.transformer then
-      item = self.transformer:transform(item)
-    end
   end)
 
   if err then

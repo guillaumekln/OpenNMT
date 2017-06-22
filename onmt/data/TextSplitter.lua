@@ -3,12 +3,31 @@ local String = require('onmt.utils.String')
 --[[ Splits text and word features. ]]
 local TextSplitter, parent = torch.class('TextSplitter', 'DataTransformer')
 
+--[[ Creates a new TextSplitter.
+
+Parameters:
+
+  * `tokenSeparator` - the token or timestep separator.
+  * `streamSeparator` - the separator of each input stream (a.k.a word features)
+
+]]
 function TextSplitter:__init(tokenSeparator, streamSeparator)
   parent.__init(self)
   self.tokenSeparator = tokenSeparator or ' '
   self.streamSeparator = streamSeparator or '￨'
 end
 
+--[[ Transform raw text to streams of tokens.
+
+Parameters:
+
+  * `text` - a string.
+
+Returns:
+
+  * `streams` - a table of sequences of labels.
+
+]]
 function TextSplitter:transform(text)
   local tokens = String.split(String.strip(text), self.tokenSeparator)
 
@@ -33,6 +52,7 @@ function TextSplitter:transform(text)
   return streams
 end
 
+--[[ Transform `streams` to plain text. ]]
 function TextSplitter:reverse(streams)
   local tokens = {}
 

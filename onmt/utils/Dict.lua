@@ -223,41 +223,27 @@ function Dict:getFrequencies(dict)
   return newDict
 end
 
---[[
-  Convert `labels` to indices. Use `unkWord` if not found.
-  Optionally insert `bosWord` at the beginning and `eosWord` at the end.
-]]
-function Dict:convertToIdx(labels, unkWord, bosWord, eosWord)
+--[[ Convert `labels` to indices. ]]
+function Dict:toIds(labels)
   local vec = {}
 
-  if bosWord ~= nil then
-    table.insert(vec, self:lookup(bosWord))
-  end
-
   for i = 1, #labels do
-    local idx = self:lookup(labels[i])
-    if idx == nil then
-      idx = self:lookup(unkWord)
+    local id = self:lookup(labels[i])
+    if not id then
+      id = onmt.Constants.UNK
     end
-    table.insert(vec, idx)
-  end
-
-  if eosWord ~= nil then
-    table.insert(vec, self:lookup(eosWord))
+    table.insert(vec, id)
   end
 
   return torch.IntTensor(vec)
 end
 
---[[ Convert `idx` to labels. If index `stop` is reached, convert it and return. ]]
-function Dict:convertToLabels(idx, stop)
+--[[ Convert `ids` to labels. ]]
+function Dict:toLabels(ids)
   local labels = {}
 
-  for i = 1, #idx do
-    table.insert(labels, self:lookup(idx[i]))
-    if idx[i] == stop then
-      break
-    end
+  for i = 1, ids:size(1) do
+    table.insert(labels, self:lookup(ids[i]))
   end
 
   return labels
