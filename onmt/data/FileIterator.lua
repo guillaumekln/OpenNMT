@@ -6,15 +6,19 @@ local FileIterator = torch.class('FileIterator')
 Parameters:
 
   * `filename` - the file to iterate on.
-  * `transformer` - an optional `DataTransformer` to apply on items.
   * `indexed` - whether items are indexed by an identifier.
 
 ]]
-function FileIterator:__init(filename, transformer, indexed)
+function FileIterator:__init(filename, indexed)
+  self.filename = filename
   self.file = assert(io.open(filename, 'r'))
-  self.transformer = transformer
   self.indexed = indexed
   self.offset = 0
+end
+
+--[[ Assign a `DataTransformer`. ]]
+function FileIterator:setTransformer(transformer)
+  self.transformer = transformer
 end
 
 --[[ Close the file handle. ]]
@@ -56,7 +60,13 @@ function FileIterator:next()
   local item = self:_read()
 
   if self.transformer then
-    item = self.transformer:transform(item)
+    local _, err = pcall(function ()
+      item = self.transformer:transform(item)
+    end)
+
+    if err then
+      error(err .. ' (' .. self.filename .. ':' .. self.offset .. ')')
+    end
   end
 
   return item, id
