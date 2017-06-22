@@ -57,16 +57,17 @@ function FileIterator:next()
     id = self.offset
   end
 
-  local item = self:_read()
+  local item
 
-  if self.transformer then
-    local _, err = pcall(function ()
+  local _, err = pcall(function ()
+    item = self:_read()
+    if self.transformer then
       item = self.transformer:transform(item)
-    end)
-
-    if err then
-      error(err .. ' (' .. self.filename .. ':' .. self.offset .. ')')
     end
+  end)
+
+  if err then
+    error(err .. ' (' .. self.filename .. ':' .. id .. ')')
   end
 
   return item, id
