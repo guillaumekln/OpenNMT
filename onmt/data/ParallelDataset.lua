@@ -60,25 +60,7 @@ function ParallelDataset:insert(entry)
     return 0
   end
 
-  for i = 1, #entry do
-    if torch.isTensor(entry[i]) then
-      if #self.data[i] == 0 then
-        self.data[i]:insert(tds.Vec())
-      end
-      self.data[i][1]:insert(entry[i])
-    else
-      local numStreams = #entry[i]
-      if #self.data[i] ~= numStreams then
-        for _ = 1, numStreams do
-          self.data[i]:insert(tds.Vec())
-        end
-      end
-      for j = 1, numStreams do
-        self.data[i][j]:insert(entry[i][j])
-      end
-    end
-  end
-
+  self.data:insert(entry)
   return 1
 end
 
@@ -89,13 +71,12 @@ function ParallelDataset:fill(fileIterators, reportEvery)
   local maps = {}
 
   for i = 1, #fileIterators do
-    self.data[i] = tds.Vec()
     table.insert(maps, tds.Hash())
   end
 
   while not fileIterators[1]:isEOF() do
-    local items = {}
-    local ids = {}
+    local items = tds.Vec()
+    local ids = tds.Vec()
 
     -- Retrieve next items and ids from all files.
     for i = 1, #fileIterators do
@@ -150,26 +131,15 @@ function ParallelDataset:fill(fileIterators, reportEvery)
   return self
 end
 
---[[ Returns the number of streams of the `index`-th file. ]]
-function ParallelDataset:getNumStreams(index)
-  return #self.data[index]
-end
-
 --[[ Returns the number of items in the dataset. ]]
 function ParallelDataset:size()
-  return #self.data[1][1]
+  return #self.data
 end
 
 --[[ Permutes all entries using `perm` tensor. ]]
 function ParallelDataset:permute(perm)
   assert(perm:size(1) == self:size())
-
-  for i = 1, #self.data do
-    for j = 1, #self.data[i] do
-      self.data[i][j] = Table.reorder(self.data[i][j], perm, true)
-    end
-  end
-
+  self.data = Table.reorder(self.data, perm, true)
   return self
 end
 
@@ -183,8 +153,8 @@ end
 function ParallelDataset:sortByLength(index)
   local lengths = torch.IntTensor(self:size())
 
-  for i = 1, #self.data[index][1] do
-    lengths[i] = self.data[index][1][i]:size(1)
+  for i = 1, lengths:size(1) do
+    lengths[i] = self.data[i][index][1]:size(1)
   end
 
   local _, perm = torch.sort(lengths)
