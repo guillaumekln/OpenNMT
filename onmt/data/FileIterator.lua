@@ -7,12 +7,14 @@ Parameters:
 
   * `filename` - the file to iterate on.
   * `indexed` - whether items are indexed by an identifier.
+  * `func` - optional callable to apply on items.
 
 ]]
-function FileIterator:__init(filename, indexed)
+function FileIterator:__init(filename, indexed, func)
   self.filename = filename
   self.file = assert(io.open(filename, 'r'))
   self.indexed = indexed
+  self.func = func
   self.offset = 0
 end
 
@@ -45,17 +47,19 @@ function FileIterator:next()
   self.offset = self.offset + 1
 
   local id
-
-  if self.indexed then
-    id = self:_readId()
-  else
-    id = self.offset
-  end
-
   local item
 
   local _, err = pcall(function ()
+    if self.indexed then
+      id = self:_readId()
+    else
+      id = self.offset
+    end
+
     item = self:_read()
+    if self.func then
+      item = self.func(item)
+    end
   end)
 
   if err then
@@ -73,7 +77,7 @@ function FileIterator:_readId()
     local c = self.file:read(1)
 
     if c == nil then
-      error('empty line ' .. self.offset)
+      error('empty line')
     elseif c == ' ' then
       break
     else

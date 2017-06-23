@@ -1,3 +1,6 @@
+local tds = require('tds')
+local Constants = require('onmt.Constants')
+
 --[[ Converts tokens to ids. ]]
 local StreamsToIds, parent = torch.class('StreamsToIds', 'DataTransformer')
 
@@ -25,10 +28,10 @@ Returns:
 
 ]]
 function StreamsToIds:transform(streams)
-  local ids = {}
+  local ids = tds.Vec()
 
   for i = 1, #streams do
-    table.insert(ids, self.vocabs[i]:toIds(streams[i]))
+    ids:insert(self.vocabs[i]:toIds(streams[i], Constants.UNK_WORD))
   end
 
   return ids
@@ -36,10 +39,10 @@ end
 
 --[[ Transform `ids` to streams. ]]
 function StreamsToIds:reverse(ids)
-  local streams = {}
+  local streams = tds.Vec()
 
   for i = 1, #ids do
-    table.insert(streams, self.vocabs[i]:toLabels(ids[i]))
+    streams:insert(self.vocabs[i]:toLabels(ids[i]))
   end
 
   return streams

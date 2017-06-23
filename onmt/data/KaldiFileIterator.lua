@@ -12,8 +12,8 @@ This format is expected to be indexed.
 ]]
 local KaldiFileIterator, parent = torch.class('KaldiFileIterator', 'FileIterator')
 
-function KaldiFileIterator:__init(filename)
-  parent.__init(self, filename, true)
+function KaldiFileIterator:__init(filename, func)
+  parent.__init(self, filename, true, func)
 end
 
 --[[ Read the next item as a `FloatTensor`. ]]

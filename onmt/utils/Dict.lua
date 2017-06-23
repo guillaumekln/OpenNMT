@@ -224,13 +224,13 @@ function Dict:getFrequencies(dict)
 end
 
 --[[ Convert `labels` to indices. ]]
-function Dict:toIds(labels)
+function Dict:toIds(labels, unkWord)
   local vec = {}
 
   for i = 1, #labels do
     local id = self:lookup(labels[i])
     if not id then
-      id = onmt.Constants.UNK
+      id = self:lookup(unkWord)
     end
     table.insert(vec, id)
   end
