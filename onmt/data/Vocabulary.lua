@@ -1,179 +1,155 @@
-local path = require('pl.path')
+local Dict = require('onmt.utils.Dict')
+local Constants = require('onmt.Constants')
+local Table = require('onmt.utils.Table')
 
---[[ Vocabulary management utility functions. ]]
-local Vocabulary = torch.class("Vocabulary")
+--[[ Class to build vocabularies, containing one or several dictionaries. ]]
+local Vocabulary = torch.class('Vocabulary')
 
-local function countFeatures(filename, idxFile)
-  local reader = onmt.utils.FileReader.new(filename, idxFile)
-  local _, _, numFeatures = onmt.utils.Features.extract(reader:next())
-  reader:close()
-  return numFeatures
+--[[ Static function to build vocabulary related options as needed.
+
+Parameters:
+
+  * `prefix` - an optional option prefix (e.g. `src`).
+
+Returns: the table of options.
+
+]]
+function Vocabulary.addOpts(options, prefix, name)
+  prefix = prefix and prefix .. '_' or ''
+
+  Table.append(
+    options,
+    {
+      {
+        '-' .. prefix ..'vocab', { },
+        [[List of pre-built vocabularies: `words.txt[ feat1.txt[ feat2.txt[ ...] ] ]`.
+        Use 'x' if you don't want to set a pre-built vocabulary for a stream.]]
+      },
+      {
+        '-' .. prefix .. 'vocab_size', { 50000 },
+        [[List of vocabularies size: `word[ feat1[ feat2[ ...] ] ]`.
+        If = 0, vocabularies are not pruned.]]
+      },
+      {
+        '-' .. prefix .. 'words_min_frequency', { 0 },
+        [[List of words minimum frequency: `word[ feat1[ feat2[ ...] ] ]`.
+        If = 0, vocabularies are pruned by size.]]
+      }
+    }
+  )
+
+  return options
 end
 
-function Vocabulary.make(filename, validFunc, idxFile)
-  local wordVocab = onmt.utils.Dict.new({onmt.Constants.PAD_WORD, onmt.Constants.UNK_WORD,
-                                         onmt.Constants.BOS_WORD, onmt.Constants.EOS_WORD})
-  local featuresVocabs = {}
+--[[ Creates a new vocabulary.
 
-  local reader = onmt.utils.FileReader.new(filename, idxFile)
-  local lineId = 0
+Parameters:
 
-  while true do
-    local sent = reader:next()
-    if sent == nil then
-      break
-    end
+  * `args` - a table containing the keys as listed in `addOpts`.
+  * `fileIterator` - a text file iterator.
+  * `splitter` - a `DataTransformer` to segment the text.
+  * `prefix` - the prefix used to build the options.
 
-    lineId = lineId + 1
+]]
+function Vocabulary:__init(args, fileIterator, splitter, prefix)
+  self.dicts = {}
 
-    if validFunc(sent) then
-      local words, features, numFeatures
-      local _, err = pcall(function ()
-        words, features, numFeatures = onmt.utils.Features.extract(sent)
-      end)
+  -- Read prefixed options.
+  prefix = prefix and prefix .. '_' or ''
+  local vocabOpt = args[prefix .. 'vocab']
+  local vocabSizeOpt = args[prefix .. 'vocab_size']
+  local minFrequencyOpt = args[prefix .. 'words_min_frequency']
 
-      if err then
-        error(err .. ' (' .. filename .. ':' .. lineId .. ')')
-      end
+  self.prefix = prefix
 
-      if #featuresVocabs == 0 and numFeatures > 0 then
-        for j = 1, numFeatures do
-          featuresVocabs[j] = onmt.utils.Dict.new({onmt.Constants.PAD_WORD, onmt.Constants.UNK_WORD,
-                                                   onmt.Constants.BOS_WORD, onmt.Constants.EOS_WORD})
-        end
-      else
-        assert(#featuresVocabs == numFeatures,
-               'all sentences must have the same numbers of additional features (' .. filename .. ':' .. lineId .. ')')
-      end
+  -- Lookup first line to figure the number of streams.
+  local numStreams = #splitter:transform(fileIterator:lookup())
 
-      for i = 1, #words do
-        wordVocab:add(words[i])
+  -- Load pre-buillt vocabulary, if any.
+  local numLoaded = self:_loadFromFiles(vocabOpt)
 
-        for j = 1, numFeatures do
-          featuresVocabs[j]:add(features[j][i])
-        end
-      end
-    end
+  -- If some stream vocabularies are missing, we need to process the text file.
+  if numLoaded ~= numStreams then
+    local dicts = self:_buildFromText(fileIterator, splitter)
 
-    -- keep frequency also for sentences
-    wordVocab:setFrequency(onmt.Constants.BOS_WORD, lineId)
-    wordVocab:setFrequency(onmt.Constants.EOS_WORD, lineId)
+    for i = 1, numStreams do
+      if not self.dicts[i] then
+        -- Also pruned generated vocabulary as needed.
+        local maxSize = vocabSizeOpt[i] or 0
+        local minFrequency = minFrequencyOpt[i] or 0
 
-  end
-
-  reader:close()
-
-  return wordVocab, featuresVocabs
-end
-
-function Vocabulary.init(name, dataFile, vocabFile, vocabSize, wordsMinFrequency, featuresVocabsFiles, validFunc, keepFrequency, idxFile)
-  local wordVocab
-  local featuresVocabs = {}
-  local numFeatures = countFeatures(dataFile, idxFile)
-
-  if vocabFile:len() > 0 then
-    -- If given, load existing word dictionary.
-    _G.logger:info(' * Reading ' .. name .. ' vocabulary from \'' .. vocabFile .. '\'...')
-    wordVocab = onmt.utils.Dict.new()
-    wordVocab:loadFile(vocabFile)
-    _G.logger:info(' * Loaded ' .. wordVocab:size() .. ' ' .. name .. ' words')
-  end
-
-  if featuresVocabsFiles:len() > 0 and numFeatures > 0 then
-    -- If given, discover existing features dictionaries.
-    local j = 1
-
-    while true do
-      local file = featuresVocabsFiles .. '.' .. name .. '_feature_' .. j .. '.dict'
-
-      if not path.exists(file) then
-        break
-      end
-
-      _G.logger:info(' * Reading ' .. name .. ' feature ' .. j .. ' vocabulary from \'' .. file .. '\'...')
-      featuresVocabs[j] = onmt.utils.Dict.new()
-      featuresVocabs[j]:loadFile(file)
-      _G.logger:info(' * Loaded ' .. featuresVocabs[j]:size() .. ' labels')
-
-      j = j + 1
-    end
-
-    assert(#featuresVocabs > 0,
-           'dictionary \'' .. featuresVocabsFiles .. '.' .. name .. '_feature_1.dict\' not found')
-    assert(#featuresVocabs == numFeatures,
-           'the data contains ' .. numFeatures .. ' ' .. name
-             .. ' features but only ' .. #featuresVocabs .. ' dictionaries were found')
-  end
-
-  if wordVocab == nil or keepFrequency or (#featuresVocabs == 0 and numFeatures > 0) then
-    -- If a dictionary is still missing, generate it.
-    _G.logger:info(' * Building ' .. name  .. ' vocabularies...')
-    local genWordVocab, genFeaturesVocabs = Vocabulary.make(dataFile, validFunc, idxFile)
-
-    local originalSizes = { genWordVocab:size() }
-    for i = 1, #genFeaturesVocabs do
-      table.insert(originalSizes, genFeaturesVocabs[i]:size())
-    end
-
-    for i = 1, 1 + #genFeaturesVocabs do
-      vocabSize[i] = vocabSize[i] or 0
-      wordsMinFrequency[i] = wordsMinFrequency[i] or 0
-    end
-
-    if wordVocab == nil then
-      if wordsMinFrequency[1] > 0 then
-        wordVocab = genWordVocab:pruneByMinFrequency(wordsMinFrequency[1])
-      elseif vocabSize[1] > 0 then
-        wordVocab = genWordVocab:prune(vocabSize[1])
-      else
-        wordVocab = genWordVocab
-      end
-
-      _G.logger:info(' * Created word dictionary of size '
-                       .. wordVocab:size() .. ' (pruned from ' .. originalSizes[1] .. ')')
-    elseif keepFrequency then
-      -- if a dictionary was provided get frequency
-      wordVocab = genWordVocab:getFrequencies(wordVocab)
-    end
-
-    if #featuresVocabs == 0 then
-      for i = 1, #genFeaturesVocabs do
-        if wordsMinFrequency[i + 1] > 0 then
-          featuresVocabs[i] = genFeaturesVocabs[i]:pruneByMinFrequency(wordsMinFrequency[i + 1])
-        elseif vocabSize[i + 1] > 0 then
-          featuresVocabs[i] = genFeaturesVocabs[i]:prune(vocabSize[i + 1])
+        if minFrequency > 0 then
+          self.dicts[i] = dicts[i]:pruneByMinFrequency(minFrequency)
+        elseif maxSize > 0 then
+          self.dicts[i] = dicts[i]:prune(maxSize)
         else
-          featuresVocabs[i] = genFeaturesVocabs[i]
+          self.dicts[i] = dicts
         end
+      end
+    end
 
-        _G.logger:info(' * Created feature ' .. i .. ' dictionary of size '
-                         .. featuresVocabs[i]:size() .. ' (pruned from ' .. originalSizes[i + 1] .. ')')
+  end
 
+end
+
+--[[ Saves dictionaries on disk.
+
+Parameters:
+
+  * `path` - the prefix of the path.
+
+]]
+function Vocabulary:save(path)
+  for i = 1, #self.dicts do
+    local file = path
+    if self.prefix ~= '' then
+      file = file .. '.' .. self.prefix
+    end
+    file = file .. '.dict.' .. tostring(i)
+
+    self.dicts[i]:writeFile(file)
+  end
+end
+
+--[[ Builds dictionaries from a text file. ]]
+function Vocabulary:_buildFromText(fileIterator, splitter)
+  local dicts = {}
+
+  while not fileIterator:isEOF() do
+    local item = fileIterator:next()
+    local streams = splitter:transform(item)
+
+    if #dicts == 0 then
+      for i = 1, #streams do
+        dicts[i] = Dict.new({Constants.PAD_WORD, Constants.UNK_WORD,
+                             Constants.BOS_WORD, Constants.EOS_WORD})
+      end
+    else
+      assert(#streams == #dicts, 'all sentences must have the same number of streams')
+    end
+
+    for i = 1, #streams do
+      for j = 1, #streams[i] do
+        dicts[i]:add(streams[i][j])
       end
     end
   end
 
-  _G.logger:info('')
-
-  wordVocab:prepFrequency(keepFrequency)
-
-  return {
-    words = wordVocab,
-    features = featuresVocabs
-  }
+  return dicts
 end
 
-function Vocabulary.save(name, vocab, file)
-  _G.logger:info('Saving ' .. name .. ' vocabulary to \'' .. file .. '\'...')
-  vocab:writeFile(file)
-end
+--[[ Loads pre-built dictionaries. ]]
+function Vocabulary:_loadFromFiles(vocabs)
+  local loaded = 0
 
-function Vocabulary.saveFeatures(name, vocabs, prefix)
-  for j = 1, #vocabs do
-    local file = prefix .. '_feature_' .. j .. '.dict'
-    _G.logger:info('Saving ' .. name .. ' feature ' .. j .. ' vocabulary to \'' .. file .. '\'...')
-    vocabs[j]:writeFile(file)
+  for i = 1, #vocabs do
+    if vocabs[i] ~= 'x' then
+      self.dicts[i] = Dict.new(vocabs[i])
+      loaded = loaded + 1
+    end
   end
+
+  return loaded
 end
 
 return Vocabulary
