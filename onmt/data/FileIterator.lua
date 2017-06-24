@@ -7,14 +7,12 @@ Parameters:
 
   * `filename` - the file to iterate on.
   * `indexed` - whether items are indexed by an identifier.
-  * `func` - optional callable to apply on items.
 
 ]]
-function FileIterator:__init(filename, indexed, func)
+function FileIterator:__init(filename, indexed)
   self.filename = filename
   self.file = assert(io.open(filename, 'r'))
   self.indexed = indexed
-  self.func = func
   self.offset = 0
 end
 
@@ -57,9 +55,6 @@ function FileIterator:next()
     end
 
     item = self:_read()
-    if self.func then
-      item = self.func(item)
-    end
   end)
 
   if err then

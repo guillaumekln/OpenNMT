@@ -1,3 +1,5 @@
+require('onmt.data.FileIterator')
+
 local String = require('onmt.utils.String')
 
 --[[ FileIterator that consumes Kaldi's .ark format:
@@ -12,8 +14,8 @@ This format is expected to be indexed.
 ]]
 local KaldiFileIterator, parent = torch.class('KaldiFileIterator', 'FileIterator')
 
-function KaldiFileIterator:__init(filename, func)
-  parent.__init(self, filename, true, func)
+function KaldiFileIterator:__init(filename)
+  parent.__init(self, filename, true)
 end
 
 --[[ Read the next item as a `FloatTensor`. ]]
