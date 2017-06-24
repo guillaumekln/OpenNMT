@@ -1,3 +1,6 @@
+require('onmt.data.DataTransformer')
+
+local tds = require('tds')
 local String = require('onmt.utils.String')
 
 --[[ Splits text and word features. ]]
@@ -31,21 +34,21 @@ Returns:
 function TextSplitter:transform(text)
   local tokens = String.split(String.strip(text), self.tokenSeparator)
 
-  local streams = {}
+  local streams = tds.Vec()
 
   for t = 1, #tokens do
     local fields = String.split(tokens[t], self.streamSeparator)
 
     if #streams == 0 then
       for _ = 1, #fields do
-        table.insert(streams, {})
+        streams:insert(tds.Vec())
       end
     else
       assert(#fields == #streams, 'all words must have the same number of features')
     end
 
     for i = 1, #fields do
-      table.insert(streams[i], fields[i])
+      streams[i]:insert(fields[i])
     end
   end
 

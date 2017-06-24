@@ -1,7 +1,6 @@
 require('onmt.data.ParallelDataset')
 
 local tds = require('tds')
-local Table = require('onmt.utils.Table')
 
 --[[
 
@@ -19,6 +18,28 @@ end
 
 function InMemoryDataset:getNext()
   error('InMemoryDataset do not support streaming interface')
+end
+
+--[[ Get batch at index `index`. ]]
+function InMemoryDataset:getBatch(index)
+  local offset
+  local size
+
+  if self.batchRange then
+    offset = self.batchRange[index].offset
+    size = self.batchRange[index].size
+  else
+    offset = index
+    size = 1
+  end
+
+  local entries = tds.Vec()
+
+  for i = offset, offset + size - 1 do
+    entries:insert(self.data[i])
+  end
+
+  return entries
 end
 
 --[[ Fills dataset from data files. ]]
@@ -51,10 +72,46 @@ function InMemoryDataset:fromFiles(fileIterators)
   return self
 end
 
+--[[ Prepares batches with up to `batchSize` entries.
+
+`stepFunc` is function that take the current and previous item and returns true
+if a batch needs to be terminated.
+
+ ]]
+function InMemoryDataset:batchify(batchSize, stepFunc)
+  self.batchRange = {}
+
+  local currentBatchSize = 0
+  local cursor = 1
+
+  for i = 1, self:size() do
+    if currentBatchSize == batchSize
+    or stepFunc and i > 1 and stepFunc(self.data[i], self.data[i - 1]) then
+      table.insert(self.batchRange, { offset = cursor, size = currentBatchSize })
+      cursor = i
+      currentBatchSize = 1
+    else
+      currentBatchSize = currentBatchSize + 1
+    end
+  end
+
+  table.insert(self.batchRange, { offset = cursor, size = currentBatchSize })
+
+  return self
+end
 
 --[[ Returns the number of items in the dataset. ]]
 function InMemoryDataset:size()
   return #self.data
+end
+
+--[[ Returns the number of batches. ]]
+function InMemoryDataset:batchCount()
+  if self.batchRange then
+    return #self.batchRange
+  else
+    return self:size()
+  end
 end
 
 --[[ Shuffles items. ]]
@@ -78,7 +135,16 @@ end
 --[[ Permutes all entries using `perm` tensor. ]]
 function InMemoryDataset:_permute(perm)
   assert(perm:size(1) == self:size())
-  self.data = Table.reorder(self.data, perm, true)
+
+  local newData = tds.Vec()
+  newData:resize(#self.data)
+
+  for i = 1, #self.data do
+    newData[i] = self.data[perm[i]]
+  end
+
+  self.data = newData
+
   return self
 end
 

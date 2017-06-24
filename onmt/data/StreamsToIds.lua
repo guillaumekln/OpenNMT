@@ -1,3 +1,5 @@
+require('onmt.data.DataTransformer')
+
 local tds = require('tds')
 local Constants = require('onmt.Constants')
 
