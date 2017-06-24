@@ -13,12 +13,18 @@ function FileIterator:__init(filename, indexed)
   self.filename = filename
   self.file = assert(io.open(filename, 'r'))
   self.indexed = indexed
-  self.offset = 1
+  self.offset = 0
 end
 
 --[[ Closes the file handle. ]]
 function FileIterator:close()
   self.file:close()
+end
+
+--[[ Resets iterator to the beginning of the file. ]]
+function FileIterator:reset()
+  self.file:seek('set')
+  self.offset = 0
 end
 
 --[[ Returns true if the end of file is reached. ]]
@@ -75,7 +81,7 @@ function FileIterator:_read()
     if self.indexed then
       id = self:_readId()
     else
-      id = self.offset
+      id = self.offset + 1
     end
 
     item = self:_readItem()
