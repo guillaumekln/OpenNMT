@@ -1,5 +1,6 @@
 require('onmt.data.DataTransformer')
 
+local utf8 = require('lua-utf8')
 local tds = require('tds')
 local String = require('onmt.utils.String')
 
@@ -10,7 +11,7 @@ local TextSplitter, parent = torch.class('TextSplitter', 'DataTransformer')
 
 Parameters:
 
-  * `tokenSeparator` - the token or timestep separator.
+  * `tokenSeparator` - the token or timestep separator. If empty, it will split on characters.
   * `streamSeparator` - the separator of each input stream (a.k.a word features)
 
 ]]
@@ -32,7 +33,17 @@ Returns:
 
 ]]
 function TextSplitter:transform(text)
-  local tokens = String.split(String.strip(text), self.tokenSeparator)
+  text = String.strip(text)
+
+  local tokens = {}
+
+  if self.tokenSeparator == '' then
+    for _, c in utf8.codes(text) do
+      table.insert(tokens, utf8.char(c))
+    end
+  else
+    tokens = String.split(String.strip(text), self.tokenSeparator)
+  end
 
   local streams = tds.Vec()
 
