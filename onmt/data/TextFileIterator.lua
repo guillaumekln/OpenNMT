@@ -7,8 +7,8 @@ function TextFileIterator:__init(...)
   parent.__init(self, ...)
 end
 
---[[ Read the next line. ]]
-function TextFileIterator:_read()
+--[[ Reads the next line. ]]
+function TextFileIterator:_readItem()
   return self.file:read()
 end
 

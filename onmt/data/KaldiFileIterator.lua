@@ -18,8 +18,8 @@ function KaldiFileIterator:__init(filename)
   parent.__init(self, filename, true)
 end
 
---[[ Read the next item as a `FloatTensor`. ]]
-function KaldiFileIterator:_read()
+--[[ Reads the next item as a `FloatTensor`. ]]
+function KaldiFileIterator:_readItem()
   local values = {}
   local completed = false
 

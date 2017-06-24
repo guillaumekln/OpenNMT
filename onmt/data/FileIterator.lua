@@ -1,7 +1,7 @@
 --[[ Class that iterates on a file of items. ]]
 local FileIterator = torch.class('FileIterator')
 
---[[ Create a new FileIterator.
+--[[ Creates a new FileIterator.
 
 Parameters:
 
@@ -13,15 +13,15 @@ function FileIterator:__init(filename, indexed)
   self.filename = filename
   self.file = assert(io.open(filename, 'r'))
   self.indexed = indexed
-  self.offset = 0
+  self.offset = 1
 end
 
---[[ Close the file handle. ]]
+--[[ Closes the file handle. ]]
 function FileIterator:close()
   self.file:close()
 end
 
---[[ Return true if the end of file is reached. ]]
+--[[ Returns true if the end of file is reached. ]]
 function FileIterator:isEOF()
   local current = self.file:seek()
   local eos = self.file:read(1) == nil
@@ -29,7 +29,7 @@ function FileIterator:isEOF()
   return eos
 end
 
---[[ Return the next item.
+--[[ Consumes and returns the next item.
 
 Returns:
 
@@ -42,8 +42,32 @@ function FileIterator:next()
     return nil
   end
 
+  local item, id = self:_read()
   self.offset = self.offset + 1
+  return item, id
+end
 
+--[[ Returns the next item.
+
+Returns:
+
+  * `item` - the item.
+  * `id` - the item identifier.
+
+]]
+function FileIterator:lookup()
+  if self:isEOF() then
+    return nil
+  end
+
+  local current = self.file:seek()
+  local item, id = self:_read()
+  self.file:seek('set', current)
+  return item, id
+end
+
+--[[ Reads the next entry. ]]
+function FileIterator:_read()
   local id
   local item
 
@@ -54,7 +78,7 @@ function FileIterator:next()
       id = self.offset
     end
 
-    item = self:_read()
+    item = self:_readItem()
   end)
 
   if err then
@@ -64,7 +88,7 @@ function FileIterator:next()
   return item, id
 end
 
---[[ Read the next line identifier as a string. ]]
+--[[ Reads the next line identifier as a string. ]]
 function FileIterator:_readId()
   local id = ''
 
@@ -83,12 +107,12 @@ function FileIterator:_readId()
   return id
 end
 
---[[ Read the next item.
+--[[ Reads the next item.
 
 This method must be overriden by child classes.
 
 ]]
-function FileIterator:_read()
+function FileIterator:_readItem()
   error('Not implemented')
 end
 
