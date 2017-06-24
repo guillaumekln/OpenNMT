@@ -1,4 +1,5 @@
 local tds = require('tds')
+local threads = require('threads')
 
 --[[ A ParallelDataset reads data from one or multiple sources. ]]
 local ParallelDataset = torch.class('ParallelDataset')
@@ -7,11 +8,14 @@ local ParallelDataset = torch.class('ParallelDataset')
 function ParallelDataset:__init(fileIterators)
   self:_setIterators(fileIterators)
   self.batchSize = 1
+  self.mutex = threads.Mutex()
 end
 
 --[[ Returns next batch of entries. ]]
 function ParallelDataset:getNext()
   local entries = tds.Vec()
+
+  self.mutex:lock()
 
   for _ = 1, self.batchSize do
     local entry = self:_readNext()
@@ -21,6 +25,8 @@ function ParallelDataset:getNext()
       break
     end
   end
+
+  self.mutex:unlock()
 
   if #entries > 0 then
     return entries
