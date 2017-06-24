@@ -1,18 +1,38 @@
 local tds = require('tds')
-local Table = require('onmt.utils.Table')
 
---[[ A ParallelDataset stores data from one or multiple sources. ]]
+--[[ A ParallelDataset reads data from one or multiple sources. ]]
 local ParallelDataset = torch.class('ParallelDataset')
 
 --[[ Creates a new ParallelDataset. ]]
-function ParallelDataset:__init(data)
-  self.data = data or tds.Vec()
-  self.maps = {}
+function ParallelDataset:__init(fileIterators)
+  self:_setIterators(fileIterators)
+  self.batchSize = 1
 end
 
---[[ Returns the number of items in the dataset. ]]
-function ParallelDataset:size()
-  return #self.data
+--[[ Returns next batch of entries. ]]
+function ParallelDataset:getNext()
+  local entries = tds.Vec()
+
+  for _ = 1, self.batchSize do
+    local entry = self:_readNext()
+    if entry then
+      entries:insert(entry)
+    else
+      break
+    end
+  end
+
+  if #entries > 0 then
+    return entries
+  else
+    return nil
+  end
+end
+
+--[[ Return up to `batchSize` entries. ]]
+function ParallelDataset:batchify(batchSize)
+  self.batchSize = batchSize
+  return self
 end
 
 --[[ Apply `funcs` on each read items. ]]
@@ -33,62 +53,7 @@ function ParallelDataset:setParallelValidator(validator)
   return self
 end
 
---[[ Fills dataset from data files. ]]
-function ParallelDataset:fromFiles(fileIterators)
-  self:_setIterators(fileIterators)
-
-  while true do
-    local entry = self:_readNext(fileIterators)
-
-    if not entry then
-      break
-    elseif self:_isValid(entry) then
-      self.data:insert(entry)
-    end
-  end
-
-  -- Warned about identifiers with missing items.
-  local orphans = {}
-  for i = 1, #self.maps do
-    for id, _ in pairs(self.maps[i]) do
-      orphans[id] = true
-    end
-  end
-  for id, _ in pairs(orphans) do
-    _G.logger:warning('Not all files contain the identifier %s', tostring(id))
-  end
-
-  self.maps = {}
-
-  return self
-end
-
---[[ Shuffles items. ]]
-function ParallelDataset:shuffle()
-  local perm = torch.randperm(self:size())
-  return self:_permute(perm)
-end
-
---[[ Sorts all entries based on values returned by `keyFunc`. ]]
-function ParallelDataset:sort(keyFunc)
-  local values = torch.IntTensor(self:size())
-
-  for i = 1, values:size(1) do
-    values[i] = keyFunc(self.data[i])
-  end
-
-  local _, perm = torch.sort(values)
-  return self:_permute(perm)
-end
-
---[[ Permutes all entries using `perm` tensor. ]]
-function ParallelDataset:_permute(perm)
-  assert(perm:size(1) == self:size())
-  self.data = Table.reorder(self.data, perm, true)
-  return self
-end
-
---[[ Validate an `entry` against validators. ]]
+--[[ Validates an `entry` against validators. ]]
 function ParallelDataset:_isValid(entry)
   if self.parallelValidator then
     if not self.parallelValidator(entry) then
@@ -110,6 +75,8 @@ end
 --[[ Set file iterators. ]]
 function ParallelDataset:_setIterators(fileIterators)
   self.fileIterators = fileIterators
+
+  self.maps = {}
 
   for i = 1, #fileIterators do
     self.maps[i] = tds.Hash()
@@ -193,6 +160,12 @@ function ParallelDataset:_readNext()
   return nextEntry
 end
 
+--[[
+
+  Tries to retrieve a complete entry for the identifier `identifier`. If found, it is removed
+  from the temporary storage and returned, otherwise `nil` is returned.
+
+]]
 function ParallelDataset:_retrieveEntry(identifier)
   local items = tds.Vec()
 
