@@ -86,30 +86,48 @@ local function main()
     dataset = dataset:setValidators(dataManager:getValidators())
     dataset = dataset:setParallelValidator(dataManager:getParallelValidator())
 
-    dataset = dataset:fromFiles(iterators)
+    dataset = dataset:fromFiles(iterators, opt.report_every)
 
     if opt.shuffle then
+      _G.logger:info('... shuffling entries')
       dataset = dataset:shuffle()
     end
 
     if opt.sort then
+      _G.logger:info('... sorting entries')
       dataset = dataset:sort(dataManager:sortFunc())
+    end
+
+    _G.logger:info('Prepared %d entries', dataset:size())
+    _G.logger:info(' * %d discarded for failing validation', dataset.discarded)
+
+    for i = 1, #iterators do
+      iterators[i]:close()
     end
 
     return dataset
   end
 
   local trainIterators = dataManager:getTrainIterators()
-  local validIterators = dataManager:getValidIterators()
 
   local vocabs = dataManager:getVocabularies(trainIterators)
+  _G.logger:info('')
+
+  _G.logger:info('Preparing training data...')
   local trainDataset = buildDataset(trainIterators, vocabs)
+  _G.logger:info('')
+
+  local validIterators = dataManager:getValidIterators()
+
+  _G.logger:info('Preparing validation data...')
   local validDataset = buildDataset(validIterators, vocabs)
+  _G.logger:info('')
 
   for i = 1, #vocabs do
     vocabs[i]:save(opt.save_data)
   end
 
+  _G.logger:info('')
   _G.logger:info('Saving data to \'' .. opt.save_data .. '-train.t7\'...')
 
   local data = {}

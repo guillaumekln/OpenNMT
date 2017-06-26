@@ -8,6 +8,7 @@ local ParallelDataset = torch.class('ParallelDataset')
 function ParallelDataset:__init(fileIterators)
   self:_setIterators(fileIterators)
   self.batchSize = 1
+  self.discarded = 0
   self.mutex = threads.Mutex()
 end
 
@@ -47,7 +48,13 @@ end
 
 --[[ Apply `funcs` on each read items. ]]
 function ParallelDataset:map(funcs)
-  self.funcs = funcs
+  self.mapFuncs = funcs
+  return self
+end
+
+--[[ Call `funcs` on each read items (after mapping functions). ]]
+function ParallelDataset:iter(funcs)
+  self.iterFuncs = funcs
   return self
 end
 
@@ -67,6 +74,7 @@ end
 function ParallelDataset:_isValid(entry)
   if self.parallelValidator then
     if not self.parallelValidator(entry) then
+      self.discarded = self.discarded + 1
       return false
     end
   end
@@ -74,6 +82,7 @@ function ParallelDataset:_isValid(entry)
   if self.validators then
     for i = 1, #entry do
       if not self.validators[i](entry[i]) then
+        self.discarded = self.discarded + 1
         return false
       end
     end
@@ -107,8 +116,11 @@ function ParallelDataset:_readNext()
       local item, id = self.fileIterators[i]:next()
 
       if item then
-        if self.funcs and self.funcs[i] then
-          item = self.funcs[i](item)
+        if self.mapFuncs and self.mapFuncs[i] then
+          item = self.mapFuncs[i](item)
+        end
+        if self.iterFuncs and self.iterFuncs[i] then
+          self.iterFuncs[i](item)
         end
 
         items[i] = item

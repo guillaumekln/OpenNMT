@@ -49,17 +49,22 @@ Parameters:
   * `fileIterator` - a text file iterator.
   * `splitter` - a `DataTransformer` to segment the text.
   * `prefix` - the prefix used to build the options.
+  * `name` - the name of this vocabulary instance.
 
 ]]
-function Vocabulary:__init(args, fileIterator, splitter, prefix)
+function Vocabulary:__init(args, fileIterator, splitter, prefix, name)
+  _G.logger:info('Preparing %svocabularies...', name and name .. ' ' or '')
+
   self.dicts = {}
   self.generated = {}
+  self.name = name
+  self.prefix = prefix
 
   -- Read prefixed options.
-  self.prefix = prefix and prefix .. '_' or ''
-  local vocabOpt = args[self.prefix .. 'vocab']
-  local vocabSizeOpt = args[self.prefix .. 'vocab_size']
-  local minFrequencyOpt = args[self.prefix .. 'words_min_frequency']
+  prefix = prefix and prefix .. '_' or ''
+  local vocabOpt = args[prefix .. 'vocab']
+  local vocabSizeOpt = args[prefix .. 'vocab_size']
+  local minFrequencyOpt = args[prefix .. 'words_min_frequency']
 
   -- Lookup first line to figure the number of streams.
   local numStreams = #splitter:transform(fileIterator:lookup())
@@ -87,6 +92,9 @@ function Vocabulary:__init(args, fileIterator, splitter, prefix)
         else
           self.dicts[i] = dicts
         end
+
+        _G.logger:info(' * Created dictionary %d of size %d (pruned from %d)',
+                       i, self.dicts[i]:size(), dicts[i]:size())
       end
     end
 
@@ -106,10 +114,13 @@ function Vocabulary:save(path)
     -- Only save dictionaries that were generated in this session.
     if self.generated[i] then
       local file = path
-      if self.prefix ~= '' then
+      if self.prefix then
         file = file .. '.' .. self.prefix
       end
       file = file .. '.dict.' .. tostring(i)
+
+      _G.logger:info('Saving %sdictionary %d to \'%s\'...',
+                     self.name and self.name .. ' ' or '', i, file)
 
       self.dicts[i]:writeFile(file)
     end
@@ -153,6 +164,8 @@ function Vocabulary:_loadFromFiles(vocabs)
     if vocabs[i] ~= 'x' then
       self.dicts[i] = Dict.new(vocabs[i])
       loaded = loaded + 1
+      _G.logger:info(' * Loaded dictionary %d of size %d from \'%s\'',
+                     i, self.dicts[i]:size(), vocabs[i])
     end
   end
 

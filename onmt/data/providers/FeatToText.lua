@@ -81,7 +81,7 @@ end
 
 function FeatToText:getVocabularies(iterators)
   return {
-    Vocabulary.new(self.args, iterators[2], self.splitter, 'tgt')
+    Vocabulary.new(self.args, iterators[2], self.splitter, 'tgt', 'target')
   }
 end
 

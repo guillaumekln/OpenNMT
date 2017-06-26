@@ -13,6 +13,33 @@ local InMemoryDataset, _ = torch.class('InMemoryDataset', 'ParallelDataset')
 --[[ Creates a new InMemoryDataset. ]]
 function InMemoryDataset:__init()
   self.data = tds.Vec()
+  self.discarded = 0
+end
+
+--[[ Apply `funcs` on stored and future items. ]]
+function InMemoryDataset:map(funcs)
+  parent.map(self, funcs)
+
+  for i = 1, #self.data do
+    for j = 1, #funcs do
+      if funcs[j] then
+        self.data[i][j] = funcs[j](self.data[i][j])
+      end
+    end
+  end
+end
+
+--[[ Call `funcs` on stored and future items (if the latter, it will be called after mapping functions. ]]
+function InMemoryDataset:iter(funcs)
+  parent.iter(self, funcs)
+
+  for i = 1, #self.data do
+    for j = 1, #funcs do
+      if funcs[j] then
+        funcs[j](self.data[i][j])
+      end
+    end
+  end
 end
 
 function InMemoryDataset:getNext()
@@ -42,8 +69,10 @@ function InMemoryDataset:getBatch(index)
 end
 
 --[[ Fills dataset from data files. ]]
-function InMemoryDataset:fromFiles(fileIterators)
+function InMemoryDataset:fromFiles(fileIterators, reportEvery)
   self:_setIterators(fileIterators)
+
+  local count = 0
 
   while true do
     local entry = self:_readNext(fileIterators)
@@ -52,6 +81,11 @@ function InMemoryDataset:fromFiles(fileIterators)
       break
     elseif self:_isValid(entry) then
       self.data:insert(entry)
+    end
+
+    count = count + 1
+    if reportEvery and count % reportEvery == 0 then
+      _G.logger:info('... %d entries prepared', count)
     end
   end
 
