@@ -53,14 +53,13 @@ Parameters:
 ]]
 function Vocabulary:__init(args, fileIterator, splitter, prefix)
   self.dicts = {}
+  self.generated = {}
 
   -- Read prefixed options.
-  prefix = prefix and prefix .. '_' or ''
-  local vocabOpt = args[prefix .. 'vocab']
-  local vocabSizeOpt = args[prefix .. 'vocab_size']
-  local minFrequencyOpt = args[prefix .. 'words_min_frequency']
-
-  self.prefix = prefix
+  self.prefix = prefix and prefix .. '_' or ''
+  local vocabOpt = args[self.prefix .. 'vocab']
+  local vocabSizeOpt = args[self.prefix .. 'vocab_size']
+  local minFrequencyOpt = args[self.prefix .. 'words_min_frequency']
 
   -- Lookup first line to figure the number of streams.
   local numStreams = #splitter:transform(fileIterator:lookup())
@@ -74,6 +73,9 @@ function Vocabulary:__init(args, fileIterator, splitter, prefix)
 
     for i = 1, numStreams do
       if not self.dicts[i] then
+        -- Mark this dictionary as generated to save it on disk.
+        self.generated[i] = true
+
         -- Also pruned generated vocabulary as needed.
         local maxSize = vocabSizeOpt[i] or 0
         local minFrequency = minFrequencyOpt[i] or 0
@@ -101,13 +103,16 @@ Parameters:
 ]]
 function Vocabulary:save(path)
   for i = 1, #self.dicts do
-    local file = path
-    if self.prefix ~= '' then
-      file = file .. '.' .. self.prefix
-    end
-    file = file .. '.dict.' .. tostring(i)
+    -- Only save dictionaries that were generated in this session.
+    if self.generated[i] then
+      local file = path
+      if self.prefix ~= '' then
+        file = file .. '.' .. self.prefix
+      end
+      file = file .. '.dict.' .. tostring(i)
 
-    self.dicts[i]:writeFile(file)
+      self.dicts[i]:writeFile(file)
+    end
   end
 end
 
@@ -134,6 +139,8 @@ function Vocabulary:_buildFromText(fileIterator, splitter)
       end
     end
   end
+
+  fileIterator:reset()
 
   return dicts
 end
