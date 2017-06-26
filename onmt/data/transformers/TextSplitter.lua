@@ -1,4 +1,4 @@
-require('onmt.data.DataTransformer')
+require('onmt.data.transformers.DataTransformer')
 
 local utf8 = require('lua-utf8')
 local tds = require('tds')

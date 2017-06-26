@@ -11,7 +11,11 @@ function ParallelDataset:__init(fileIterators)
   self.mutex = threads.Mutex()
 end
 
---[[ Returns next batch of entries. ]]
+--[[ Returns next batch of entries.
+
+Note: this method is thread-safe.
+
+]]
 function ParallelDataset:getNext()
   local entries = tds.Vec()
 

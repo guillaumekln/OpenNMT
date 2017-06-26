@@ -1,4 +1,4 @@
-require('onmt.data.FileIterator')
+require('onmt.data.iterators.FileIterator')
 
 --[[ Simple FileIterator that iterates line by line. ]]
 local TextFileIterator, parent = torch.class('TextFileIterator', 'FileIterator')

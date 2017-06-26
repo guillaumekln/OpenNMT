@@ -1,4 +1,4 @@
-require('onmt.data.FileIterator')
+require('onmt.data.iterators.FileIterator')
 
 local String = require('onmt.utils.String')
 
