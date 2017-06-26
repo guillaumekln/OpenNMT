@@ -13,7 +13,6 @@ local InMemoryDataset, _ = torch.class('InMemoryDataset', 'ParallelDataset')
 --[[ Creates a new InMemoryDataset. ]]
 function InMemoryDataset:__init()
   self.data = tds.Vec()
-  self.offset = 0
 end
 
 function InMemoryDataset:getNext()
