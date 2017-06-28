@@ -6,6 +6,10 @@ local DataTransformer = torch.class('DataTransformer')
 function DataTransformer:__init()
 end
 
+function DataTransformer:__call__(input)
+  return self:transform(input)
+end
+
 function DataTransformer:tranform(_)
   error('Not implemented')
 end
