@@ -1,3 +1,5 @@
+local TextFileIterator = require('onmt.data.iterators.TextFileIterator')
+
 local Dict = torch.class("Dict")
 
 function Dict:__init(data)
@@ -25,15 +27,12 @@ end
 
 --[[ Load entries from a file. ]]
 function Dict:loadFile(filename)
-  local reader = onmt.utils.FileReader.new(filename)
+  local reader = TextFileIterator.new(filename)
 
-  while true do
-    local fields = reader:next()
+  while not reader:isEOF() do
+    local line = reader:next()
 
-    if not fields then
-      break
-    end
-
+    local fields = onmt.utils.String.split(line, ' ')
     local label = fields[1]
     local idx = tonumber(fields[2])
 
