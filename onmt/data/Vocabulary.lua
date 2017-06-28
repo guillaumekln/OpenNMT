@@ -15,23 +15,23 @@ Returns: the table of options.
 
 ]]
 function Vocabulary.addOpts(options, prefix, name)
-  prefix = prefix and prefix .. '_' or ''
+  local startPrefix = prefix and prefix .. '_' or ''
 
   Table.append(
     options,
     {
       {
-        '-' .. prefix ..'vocab', { },
+        '-' .. startPrefix ..'vocab', { },
         [[List of pre-built vocabularies: `words.txt[ feat1.txt[ feat2.txt[ ...] ] ]`.
         Use 'x' if you don't want to set a pre-built vocabulary for a stream.]]
       },
       {
-        '-' .. prefix .. 'vocab_size', { 50000 },
+        '-' .. startPrefix .. 'vocab_size', { 50000 },
         [[List of vocabularies size: `word[ feat1[ feat2[ ...] ] ]`.
         If = 0, vocabularies are not pruned.]]
       },
       {
-        '-' .. prefix .. 'words_min_frequency', { 0 },
+        '-' ..startPrefix .. 'words_min_frequency', { 0 },
         [[List of words minimum frequency: `word[ feat1[ feat2[ ...] ] ]`.
         If = 0, vocabularies are pruned by size.]]
       }
