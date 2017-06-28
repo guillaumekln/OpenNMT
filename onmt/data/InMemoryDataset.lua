@@ -8,7 +8,7 @@ local tds = require('tds')
   operations (e.g. shuffle, sorting, sampling, etc.).
 
 ]]
-local InMemoryDataset, _ = torch.class('InMemoryDataset', 'ParallelDataset')
+local InMemoryDataset, parent = torch.class('InMemoryDataset', 'ParallelDataset')
 
 --[[ Creates a new InMemoryDataset. ]]
 function InMemoryDataset:__init()
@@ -27,6 +27,8 @@ function InMemoryDataset:map(funcs)
       end
     end
   end
+
+  return self
 end
 
 --[[ Call `funcs` on stored and future items (if the latter, it will be called after mapping functions. ]]
@@ -40,6 +42,8 @@ function InMemoryDataset:iter(funcs)
       end
     end
   end
+
+  return self
 end
 
 function InMemoryDataset:getNext()
