@@ -1,3 +1,6 @@
+local String = require('onmt.utils.String')
+local Table = require('onmt.utils.Table')
+
 ---------------------------------------------------------------------------------
 -- Local utility functions
 ---------------------------------------------------------------------------------
@@ -96,7 +99,7 @@ function ExtendedCmdLine:help(arg, md)
       io.write(arg[0] .. ' ' .. self.script .. ' ')
       io.write('[options] ')
       for i = 1, #self.arguments do
-        io.write('<' .. onmt.utils.String.stripHyphens(self.arguments[i].key) .. '>')
+        io.write('<' .. String.stripHyphens(self.arguments[i].key) .. '>')
       end
       io.write('\n')
     end
@@ -229,14 +232,14 @@ function ExtendedCmdLine:option(key, default, help, _meta_)
   -- empty and in that case, is a required option, or is an error
   if _meta_ and (
     (_meta_.valid and not _meta_.valid(default)) or
-    (_meta_.enum and type(default) ~= 'table' and not onmt.utils.Table.hasValue(_meta_.enum, default))) then
+    (_meta_.enum and type(default) ~= 'table' and not Table.hasValue(_meta_.enum, default))) then
     assert(default=='',"Invalid option default definition: "..key.."="..default)
     _meta_.required = true
   end
 
   if _meta_ and _meta_.enum and type(default) == 'table' then
     for _,k in ipairs(default) do
-      assert(onmt.utils.Table.hasValue(_meta_.enum, k), "table option not compatible with enum: "..key)
+      assert(Table.hasValue(_meta_.enum, k), "table option not compatible with enum: "..key)
     end
   end
 
@@ -250,11 +253,11 @@ function ExtendedCmdLine:loadConfig(filename, opt)
   for line in file:lines() do
     -- Ignore empty or commented out lines.
     if line:len() > 0 and string.sub(line, 1, 1) ~= '#' then
-      local field = onmt.utils.String.split(line, '=')
+      local field = String.split(line, '=')
       assert(#field == 2, 'badly formatted config file')
 
-      local key = onmt.utils.String.strip(field[1])
-      local val = onmt.utils.String.strip(field[2])
+      local key = String.strip(field[1])
+      local val = String.strip(field[2])
 
       -- Rely on the command line parser.
       local arg = { '-' .. key }
@@ -262,7 +265,7 @@ function ExtendedCmdLine:loadConfig(filename, opt)
       if val == '' then
         table.insert(arg, '')
       else
-        onmt.utils.Table.append(arg, onmt.utils.String.split(val, ' '))
+        Table.append(arg, String.split(val, ' '))
       end
 
       self:__readOption__(opt, arg, 1)
@@ -321,9 +324,9 @@ function ExtendedCmdLine:convert(key, val, type, subtype, meta)
     val = val
   elseif type == 'table' then
     local values = {}
-    val = onmt.utils.String.split(val, ' ')
+    val = String.split(val, ' ')
     for _, v in ipairs(val) do
-      onmt.utils.Table.append(values, onmt.utils.String.split(v, ','))
+      Table.append(values, String.split(v, ','))
     end
     for i = 1, #values do
       values[i] = self:convert(key, values[i], subtype)
@@ -391,7 +394,7 @@ function ExtendedCmdLine:__readOption__(params, arg, i)
     local value = self:convert(key, arg[i + 1], option.type, argumentType, option.meta)
 
     if type(value) == 'table' then
-      onmt.utils.Table.append(values, value)
+      Table.append(values, value)
     else
       table.insert(values, value)
     end
@@ -404,7 +407,7 @@ function ExtendedCmdLine:__readOption__(params, arg, i)
     end
   end
 
-  local optionName = onmt.utils.String.stripHyphens(key)
+  local optionName = String.stripHyphens(key)
 
   if #values == 0 then
     if argumentType == 'boolean' then
@@ -429,7 +432,7 @@ function ExtendedCmdLine:parse(arg)
   -- set default value
   local params = { _is_default={}, _structural={}, _init_only={}, _train_state={} }
   for option,v in pairs(self.options) do
-    local soption = onmt.utils.String.stripHyphens(option)
+    local soption = String.stripHyphens(option)
     params[soption] = v.default
     params._is_default[soption] = true
   end
@@ -457,7 +460,7 @@ function ExtendedCmdLine:parse(arg)
       saveConfig = arg[i + 1]
       i = i + 2
     else
-      local sopt = onmt.utils.String.stripHyphens(arg[i])
+      local sopt = String.stripHyphens(arg[i])
       params._is_default[sopt] = nil
       if arg[i]:sub(1,1) == '-' then
         if cmdlineOptions[arg[i]] then
@@ -531,12 +534,12 @@ function ExtendedCmdLine:parse(arg)
           self:error(msg)
         end
 
-        if meta.enum and type(self.options[K].default) ~= 'table' and not onmt.utils.Table.hasValue(meta.enum, v) then
+        if meta.enum and type(self.options[K].default) ~= 'table' and not Table.hasValue(meta.enum, v) then
           self:error('option -' .. k.. ' is not in accepted values: ' .. concatValues(meta.enum))
         end
         if meta.enum and type(self.options[K].default) == 'table' then
           for _, v1 in ipairs(v) do
-            if not onmt.utils.Table.hasValue(meta.enum, v1) then
+            if not Table.hasValue(meta.enum, v1) then
               self:error('option -' .. k.. ' is not in accepted values: ' .. concatValues(meta.enum))
             end
           end
