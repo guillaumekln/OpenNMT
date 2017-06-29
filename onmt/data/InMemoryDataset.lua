@@ -11,8 +11,8 @@ local tds = require('tds')
 local InMemoryDataset, parent = torch.class('InMemoryDataset', 'ParallelDataset')
 
 --[[ Creates a new InMemoryDataset. ]]
-function InMemoryDataset:__init()
-  self.data = tds.Vec()
+function InMemoryDataset:__init(data)
+  self.data = data or tds.Vec()
   self.discarded = 0
 end
 
@@ -140,6 +140,12 @@ end
 --[[ Returns the number of items in the dataset. ]]
 function InMemoryDataset:size()
   return #self.data
+end
+
+--[[ Returns the number of parallel dataset. ]]
+function InMemoryDataset:depth()
+  assert(self:size() > 0)
+  return #self.data[1]
 end
 
 --[[ Returns the number of batches. ]]
