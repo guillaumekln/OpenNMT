@@ -116,6 +116,7 @@ function ParallelDataset:_readNext()
       local item, id = self.fileIterators[i]:next()
 
       if item then
+        -- Apply registered functions on read item.
         if self.mapFuncs and self.mapFuncs[i] then
           item = self.mapFuncs[i](item)
         end
