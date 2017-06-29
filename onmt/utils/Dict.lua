@@ -224,17 +224,13 @@ end
 
 --[[ Convert `labels` to indices. ]]
 function Dict:toIds(labels, unkWord)
-  local vec = {}
+  local vec = torch.IntTensor(#labels)
 
   for i = 1, #labels do
-    local id = self:lookup(labels[i])
-    if not id then
-      id = self:lookup(unkWord)
-    end
-    table.insert(vec, id)
+    vec[i] = self:lookup(labels[i]) or self:lookup(unkWord)
   end
 
-  return torch.IntTensor(vec)
+  return vec
 end
 
 --[[ Convert `ids` to labels. ]]
