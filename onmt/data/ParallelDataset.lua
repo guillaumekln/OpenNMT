@@ -28,6 +28,13 @@ function ParallelDataset:__init(fileIterators, bufferSize)
   self.mutex = threads.Mutex()
 end
 
+--[[ Returns an iterator on the dataset. ]]
+function ParallelDataset:iterate()
+  return function()
+    return self:getNext()
+  end
+end
+
 --[[ Returns next batch of entries.
 
 Note: this method is thread-safe.
@@ -77,6 +84,23 @@ function ParallelDataset:getNext()
   else
     return nil
   end
+end
+
+--[[ Returns `count` batches. ]]
+function ParallelDataset:take(count)
+  local batches = tds.Vec()
+
+  while #batches < count do
+    local batch = self:getNext()
+
+    if not batch then
+      break
+    else
+      batches:insert(batch)
+    end
+  end
+
+  return batches
 end
 
 --[[ Will loop `loops` times over the dataset. If nil, will loop indefinitely. ]]
