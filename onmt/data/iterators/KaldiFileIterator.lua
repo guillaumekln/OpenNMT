@@ -2,7 +2,7 @@ require('onmt.data.iterators.FileIterator')
 
 local String = require('onmt.utils.String')
 
---[[ FileIterator that consumes Kaldi's .ark format:
+--[[ `FileIterator` that consumes Kaldi's .ark format:
 
 KEY [
 FEAT1.1 FEAT1.2 FEAT1.3 ... FEAT1.n

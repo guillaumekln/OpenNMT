@@ -21,6 +21,7 @@ function ParallelDataset:__init(fileIterators, bufferSize)
     self.maps[i] = tds.Hash()
   end
 
+  self.remainingLoops = 1
   self.batchSize = 1
   self.bufferSize = bufferSize or 1
   self.buffer = tds.Vec()
@@ -32,7 +33,7 @@ end
 Note: this method is thread-safe.
 
 ]]
-function ParallelDataset:getNext(stepFunc)
+function ParallelDataset:getNext()
   local entries = tds.Vec()
 
   self.mutex:lock()
@@ -44,7 +45,18 @@ function ParallelDataset:getNext(stepFunc)
 
     -- No more entries to read.
     if #self.buffer == 0 then
-      break
+      if self.remainingLoops then
+        self.remainingLoops = self.remainingLoops - 1
+      end
+
+      -- Reset iterators and continue if defined.
+      if not self.remainingLoops or self.remainingLoops > 0 then
+        for i = 1, #self.fileIterators do
+          self.fileIterators[i]:reset()
+        end
+
+        self:_bufferize()
+      end
     end
 
     if #entries == 0
@@ -63,6 +75,12 @@ function ParallelDataset:getNext(stepFunc)
   else
     return nil
   end
+end
+
+--[[ Will loop `loops` times over the dataset. If nil, will loop indefinitely. ]]
+function ParallelDataset:loop(loops)
+  self.remainingLoops = loops
+  return self
 end
 
 --[[ Will return up to `batchSize` entries.

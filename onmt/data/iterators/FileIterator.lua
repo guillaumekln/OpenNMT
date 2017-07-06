@@ -1,7 +1,7 @@
 --[[ Class that iterates on a file of items. ]]
 local FileIterator = torch.class('FileIterator')
 
---[[ Creates a new FileIterator.
+--[[ Creates a new `FileIterator`.
 
 Parameters:
 
