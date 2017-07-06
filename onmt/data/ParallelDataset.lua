@@ -56,6 +56,8 @@ function ParallelDataset:getNext()
         end
 
         self:_bufferize()
+      else
+        break
       end
     end
 
