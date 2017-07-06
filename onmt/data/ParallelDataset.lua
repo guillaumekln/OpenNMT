@@ -1,14 +1,29 @@
 local tds = require('tds')
 local threads = require('threads')
 
---[[ A ParallelDataset reads data from one or multiple sources. ]]
+--[[ A `ParallelDataset` reads indexed entries from one or multiple sources. ]]
 local ParallelDataset = torch.class('ParallelDataset')
 
---[[ Creates a new ParallelDataset. ]]
-function ParallelDataset:__init(fileIterators)
-  self:_setIterators(fileIterators)
+--[[ Creates a new `ParallelDataset`.
+
+Parameters:
+
+  * `fileIterators` - a table of `FileIterator`.
+  * `bufferSize` - the number of entries to read at once. If = 0, bufferize the whole dataset.
+
+]]
+function ParallelDataset:__init(fileIterators, bufferSize)
+  self.fileIterators = fileIterators
+
+  -- Maps are used to align indexed entries.
+  self.maps = {}
+  for i = 1, #fileIterators do
+    self.maps[i] = tds.Hash()
+  end
+
   self.batchSize = 1
-  self.discarded = 0
+  self.bufferSize = bufferSize or 1
+  self.buffer = tds.Vec()
   self.mutex = threads.Mutex()
 end
 
@@ -17,15 +32,25 @@ end
 Note: this method is thread-safe.
 
 ]]
-function ParallelDataset:getNext()
+function ParallelDataset:getNext(stepFunc)
   local entries = tds.Vec()
 
   self.mutex:lock()
 
-  for _ = 1, self.batchSize do
-    local entry = self:_readNext()
-    if entry then
-      entries:insert(entry)
+  while #entries < self.batchSize do
+    if #self.buffer == 0 then
+      self:_bufferize()
+    end
+
+    -- No more entries to read.
+    if #self.buffer == 0 then
+      break
+    end
+
+    if #entries == 0
+    or self.batchStepFunc and self.batchStepFunc(entries[#entries], self.buffer[#self.buffer]) then
+      entries:insert(self.buffer[#self.buffer])
+      self.buffer:remove()
     else
       break
     end
@@ -40,19 +65,46 @@ function ParallelDataset:getNext()
   end
 end
 
---[[ Return up to `batchSize` entries. ]]
-function ParallelDataset:batchify(batchSize)
+--[[ Will return up to `batchSize` entries.
+
+Parameters:
+
+  * `batchSize` - the maximum batch size.
+  * `stepFunc` - an optional callable that takes two consecutive entries and returns false
+    if the current batch needs to stop.
+
+]]
+function ParallelDataset:batchify(batchSize, stepFunc)
   self.batchSize = batchSize
+  self.batchStepFunc = stepFunc
   return self
 end
 
---[[ Apply `funcs` on each read items. ]]
+--[[ Will shuffle entries. ]]
+function ParallelDataset:shuffle()
+  self.shuffle = true
+  return self
+end
+
+--[[ Will sort entries by key values.
+
+Parameters:
+
+  * `sortKeyFunc` - a callable that returns a key per entry.
+
+]]
+function ParallelDataset:sort(sortKeyFunc)
+  self.sortKeyFunc = sortKeyFunc
+  return self
+end
+
+--[[ Will apply `funcs` on each read items. ]]
 function ParallelDataset:map(funcs)
   self.mapFuncs = funcs
   return self
 end
 
---[[ Call `funcs` on each read items (after mapping functions). ]]
+--[[ Will call `funcs` on each read items (after mapping functions). ]]
 function ParallelDataset:iter(funcs)
   self.iterFuncs = funcs
   return self
@@ -70,11 +122,11 @@ function ParallelDataset:setParallelValidator(validator)
   return self
 end
 
+
 --[[ Validates an `entry` against validators. ]]
 function ParallelDataset:_isValid(entry)
   if self.parallelValidator then
     if not self.parallelValidator(entry) then
-      self.discarded = self.discarded + 1
       return false
     end
   end
@@ -82,7 +134,6 @@ function ParallelDataset:_isValid(entry)
   if self.validators then
     for i = 1, #entry do
       if not self.validators[i](entry[i]) then
-        self.discarded = self.discarded + 1
         return false
       end
     end
@@ -91,18 +142,60 @@ function ParallelDataset:_isValid(entry)
   return true
 end
 
---[[ Set file iterators. ]]
-function ParallelDataset:_setIterators(fileIterators)
-  self.fileIterators = fileIterators
+--[[ Permutes buffered entries using `perm` tensor. ]]
+function ParallelDataset:_permute(perm)
+  assert(perm:size(1) == #self.buffer)
 
-  self.maps = {}
+  local newBuffer = tds.Vec()
+  newBuffer:resize(#self.buffer)
 
-  for i = 1, #fileIterators do
-    self.maps[i] = tds.Hash()
+  for i = 1, #self.buffer do
+    newBuffer[i] = self.buffer[perm[i]]
   end
+
+  self.buffer = newBuffer
+
+  return self
 end
 
---[[ Read next entry from files. ]]
+--[[ Bufferizes entries. ]]
+function ParallelDataset:_bufferize()
+  while self.bufferSize == 0 or #self.buffer < self.bufferSize do
+    local entry = self:_readNext()
+
+    if not entry then
+      break
+    end
+
+    if self:_isValid(entry) then
+      self.buffer:insert(entry)
+    end
+  end
+
+  -- Also shuffle and sort if defined.
+  if #self.buffer > 0 then
+    if self.shuffle then
+      local perm = torch.randperm(#self.buffer)
+      self:_permute(perm)
+    end
+
+    if self.sortKeyFunc then
+      local values = torch.IntTensor(#self.buffer)
+
+      for i = 1, values:size(1) do
+        -- Inverse key value as buffered entries will be consumed in reverse order (pop operation).
+        values[i] = -self.sortKeyFunc(self.buffer[i])
+      end
+
+      local _, perm = torch.sort(values)
+      self:_permute(perm)
+    end
+  end
+
+  return self
+end
+
+--[[ Reads next entry from files. ]]
 function ParallelDataset:_readNext()
   local nextEntry
 
@@ -185,8 +278,8 @@ end
 
 --[[
 
-  Tries to retrieve a complete entry for the identifier `identifier`. If found, it is removed
-  from the temporary storage and returned, otherwise `nil` is returned.
+Tries to retrieve a complete entry for the identifier `identifier`. If found, it is removed
+from the temporary storage and returned, otherwise `nil` is returned.
 
 ]]
 function ParallelDataset:_retrieveEntry(identifier)
