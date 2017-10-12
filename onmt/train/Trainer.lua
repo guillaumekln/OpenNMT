@@ -57,6 +57,15 @@ local options = {
     }
   },
   {
+    '-epochs', 0,
+    [[If > 0, the training will run for this many epochs unless another stopping condition
+    is met (e.g. `-min_learning_rate` is reached). When used, this option takes priority
+    over `-end_epoch`.]],
+    {
+      valid = onmt.utils.ExtendedCmdLine.isUInt()
+    }
+  },
+  {
     '-curriculum', 0,
     [[For this many epochs, order the minibatches based on source length (from smaller to longer).
       Sometimes setting this to 1 will increase convergence speed.]],
@@ -409,7 +418,11 @@ function Trainer:train(trainData, validData, trainStates)
   local unsavedEpochs = 0
   local endEpoch
 
-  if self.args.end_epoch > 0 then
+  if self.args.epochs > 0 then
+    endEpoch = self.args.start_epoch + self.args.epochs - 1
+    _G.logger:info('Start training from epoch %d and for %d epoch(s)...',
+                   startEpoch, self.args.epochs)
+  elseif self.args.end_epoch > 0 then
     endEpoch = self.args.end_epoch
     _G.logger:info('Start training from epoch %d to %d...', startEpoch, endEpoch)
   else
